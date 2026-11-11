@@ -3,6 +3,8 @@
 pub mod gitcli;
 pub mod graph;
 pub mod history;
+pub mod jobs;
+pub mod ops;
 pub mod prefs;
 pub mod repo;
 pub mod safety;
@@ -68,6 +70,7 @@ pub struct AppState {
     /// Server-to-UI events as JSON text.
     pub events: broadcast::Sender<String>,
     git: Option<gitcli::GitInfo>,
+    jobs: Arc<jobs::Jobs>,
     /// Repositories given on the command line; the UI opens them once.
     startup: RwLock<Vec<String>>,
 }
@@ -159,6 +162,7 @@ assets! {
     "graph.js" => "text/javascript; charset=utf-8",
     "diff.js" => "text/javascript; charset=utf-8",
     "changes.js" => "text/javascript; charset=utf-8",
+    "actions.js" => "text/javascript; charset=utf-8",
     "highlight.js" => "text/javascript; charset=utf-8",
     "favicon.svg" => "image/svg+xml",
     "brand/symbol.svg" => "image/svg+xml",
@@ -486,6 +490,66 @@ async fn restore_snapshot(State(st): State<Shared>, Path(id): Path<String>, Json
     Ok(Json(json!({ "files": files })))
 }
 
+// ---------- handlers: operations and jobs ----------
+
+async fn run_op(State(st): State<Shared>, Path(id): Path<String>, Json(op): Json<ops::Op>) -> ApiResult<Json<Value>> {
+    Ok(Json(mutate(&st, &id, move |r, s| ops::run(r, &s.root, op)).await?))
+}
+
+/// Starts a network operation. The answer comes at once; progress and the result arrive
+/// as `job` events.
+async fn start_job(State(st): State<Shared>, Path(id): Path<String>, Json(job): Json<ops::NetJob>) -> ApiResult<Json<jobs::JobInfo>> {
+    let s = st.session(&id).await?;
+    let (title, args) = job.command();
+    let rt = tokio::runtime::Handle::current();
+    let session = s.clone();
+    let info = st.jobs.start(Some(id), &title, s.root.clone(), args, move |_ok| {
+        // Refresh in both cases: a failed pull can still have fetched new commits.
+        rt.spawn(async move { session.changed().await });
+    })?;
+    Ok(Json(info))
+}
+
+#[derive(Deserialize)]
+struct CloneBody {
+    url: String,
+    /// The folder that receives the new repository folder.
+    parent: String,
+    /// Name of the new folder; taken from the URL when absent.
+    name: Option<String>,
+}
+
+async fn clone_repo(State(st): State<Shared>, Json(req): Json<CloneBody>) -> ApiResult<Json<Value>> {
+    let url = req.url.trim().to_string();
+    if url.is_empty() {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Enter the URL of the repository"));
+    }
+    let parent = PathBuf::from(req.parent.trim());
+    if !parent.is_dir() {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("{} is not a folder", parent.display())));
+    }
+    let name =
+        req.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| ops::clone_dir_name(&url));
+    if name.contains(['/', '\\']) || name == "." || name == ".." {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("'{name}' is not a folder name")));
+    }
+    let target = parent.join(&name);
+    if target.exists() {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("{} already exists", target.display())));
+    }
+    let args = vec!["clone".to_string(), "--progress".to_string(), url, name];
+    let info = st.jobs.start(None, "Clone", parent, args, |_| {})?;
+    Ok(Json(json!({ "job": info, "path": target.display().to_string() })))
+}
+
+async fn list_jobs(State(st): State<Shared>) -> Json<Vec<jobs::JobInfo>> {
+    Json(st.jobs.list())
+}
+
+async fn cancel_job(State(st): State<Shared>, Path(job): Path<String>) -> Json<Value> {
+    Json(json!({ "cancelled": st.jobs.cancel(&job) }))
+}
+
 async fn drop_snapshot(State(st): State<Shared>, Path(id): Path<String>, Json(req): Json<NameBody>) -> ApiResult<Json<Value>> {
     st.with_repo(&id, move |r| safety::drop(r, &req.name)).await?;
     Ok(Json(json!({ "ok": true })))
@@ -529,6 +593,7 @@ pub fn router(opts: Options) -> (Router, Shared) {
         app_token: opts.app_token,
         sessions: RwLock::new(HashMap::new()),
         recent: RwLock::new(recent),
+        jobs: jobs::Jobs::new(events.clone()),
         events,
         git: gitcli::detect(),
         startup: RwLock::new(opts.open.iter().map(|p| p.display().to_string()).collect()),
@@ -558,7 +623,12 @@ pub fn router(opts: Options) -> (Router, Shared) {
         .route("/repos/{id}/reset-soft", post(reset_soft))
         .route("/repos/{id}/snapshots", get(list_snapshots))
         .route("/repos/{id}/snapshots/restore", post(restore_snapshot))
-        .route("/repos/{id}/snapshots/drop", post(drop_snapshot));
+        .route("/repos/{id}/snapshots/drop", post(drop_snapshot))
+        .route("/repos/{id}/op", post(run_op))
+        .route("/repos/{id}/job", post(start_job))
+        .route("/clone", post(clone_repo))
+        .route("/jobs", get(list_jobs))
+        .route("/jobs/{job}", axum::routing::delete(cancel_job));
 
     let app = Router::new()
         .route("/", get(index_page))

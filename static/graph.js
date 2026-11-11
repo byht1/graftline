@@ -13,7 +13,7 @@ const MAX_PAGES = 80;  // pages kept in memory
 // to rows proportionally instead of 1:1.
 const MAX_SCROLL = 12_000_000;
 const THROUGH = 0, IN = 1, OUT = 2;
-const DEFAULT_COLS = { refs: 136, graph: 0, author: 140, date: 96, sha: 68 };
+const DEFAULT_COLS = { refs: 150, graph: 0, author: 140, date: 96, sha: 68 };
 const AUTO_LANES = 10; // lanes the graph column shows before the user resizes it
 
 export function createGraphView({ repoId, onSelect, onContext }) {
@@ -73,7 +73,13 @@ export function createGraphView({ repoId, onSelect, onContext }) {
         if (sign < 0) { res.style.right = 'auto'; res.style.left = '0'; res.style.borderRight = '0'; res.style.borderLeft = '1px solid var(--border)'; }
         dragResize(res, {
           onStart: () => (key === 'graph' ? graphWidth() : st.cols[key]),
-          onMove: (dx, _dy, w0) => { st.cols[key] = Math.max(min, Math.min(900, w0 + dx * sign)); applyCols(); schedule(); },
+          onMove: (dx, _dy, w0) => {
+            st.cols[key] = Math.max(min, Math.min(900, w0 + dx * sign));
+            // The number of labels per row depends on the width of the label column.
+            if (key === 'refs') { for (const el of rowEls.values()) el.remove(); rowEls.clear(); }
+            applyCols();
+            schedule();
+          },
           onEnd: () => store.set('gl.graphCols', st.cols),
         });
         res.addEventListener('dblclick', () => { st.cols[key] = DEFAULT_COLS[key]; applyCols(); schedule(); store.set('gl.graphCols', st.cols); });
@@ -140,8 +146,10 @@ export function createGraphView({ repoId, onSelect, onContext }) {
     if (d.k === 'wip') el.classList.add('wip');
     if (d.k === 'stash') el.classList.add('stash');
     const labels = d.r || [];
-    const shown = labels.slice(0, 2).map((l) => refLabel(l, d.cl));
-    if (labels.length > 2) shown.push(h('span', { class: 'ref more', title: labels.slice(2).map((l) => l.name).join('\n') }, `+${labels.length - 2}`));
+    // A narrow column shows one label in full; the others are counted.
+    const max = st.cols.refs >= 230 ? 2 : 1;
+    const shown = labels.slice(0, max).map((l) => refLabel(l, d.cl));
+    if (labels.length > max) shown.push(h('span', { class: 'ref more', title: labels.slice(max).map((l) => l.name).join('\n') }, `+${labels.length - max}`));
     el.append(
       h('div', { class: 'g-cell g-refs' }, shown),
       h('div', { class: 'g-cell g-graph' }),

@@ -262,6 +262,54 @@ export function confirmDialog({ title, body, confirm = 'OK', cancel = 'Cancel', 
   });
 }
 
+/**
+ * A dialog with input fields. `fields`: [{ key, label, value, placeholder, type: 'text' | 'checkbox' | 'select' | 'area',
+ * options, hint, warn }]. `submit(values)` does the work; when it throws, the message is shown
+ * and the dialog stays open. Resolves to the values, or null when cancelled.
+ */
+export function formModal({ title, fields, confirm = 'OK', danger = false, intro = null, submit }) {
+  return new Promise((resolve) => {
+    let result = null;
+    const inputs = {};
+    const status = h('div', { class: 'form-status' });
+    const rows = fields.filter(Boolean).map((f) => {
+      let input;
+      if (f.type === 'checkbox') {
+        input = h('input', { type: 'checkbox', checked: !!f.value });
+        inputs[f.key] = input;
+        return [h('label', { class: 'check' }, input, f.label), f.hint ? h('div', { class: 'hint' }, f.hint) : null];
+      }
+      if (f.type === 'select') input = h('select', { class: 'input' }, f.options.map((o) => h('option', { value: o.value ?? o, selected: (o.value ?? o) === f.value }, o.label ?? o)));
+      else if (f.type === 'area') input = h('textarea', { class: 'input area', rows: '4', placeholder: f.placeholder || '', value: f.value || '' });
+      else input = h('input', { class: 'input', placeholder: f.placeholder || '', value: f.value || '', spellcheck: 'false', autocomplete: 'off' });
+      inputs[f.key] = input;
+      return [h('label', {}, f.label, input), f.hint ? h('div', { class: 'hint' }, f.hint) : null];
+    });
+    const values = () => Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.type === 'checkbox' ? el.checked : el.value]));
+    const ok = h('button', { class: `btn ${danger ? 'danger' : 'primary'}` }, confirm);
+    const go = async () => {
+      ok.disabled = true;
+      status.className = 'form-status';
+      status.textContent = '';
+      try {
+        const v = values();
+        const out = await submit?.(v);
+        result = out === undefined ? v : out;
+        close();
+      } catch (e) {
+        status.className = 'form-status error';
+        status.textContent = e.message || String(e);
+        ok.disabled = false;
+      }
+    };
+    ok.addEventListener('click', go);
+    const form = h('form', { class: 'form', onsubmit: (e) => { e.preventDefault(); go(); } }, intro, rows, status);
+    form.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); go(); } });
+    const close = openModal(title, form, [h('button', { class: 'btn', onclick: () => close() }, 'Cancel'), ok], { onClose: () => resolve(result) });
+    queueMicrotask(() => { const first = Object.values(inputs).find((el) => el.type !== 'checkbox'); first?.focus(); first?.select?.(); });
+  });
+}
+
 /** Shows an error. A failed git command is shown word for word with the command that caused it. */
 export function showError(e, title = 'The operation failed') {
   if (!e?.command) { toast(e?.message || String(e), 'error'); return; }

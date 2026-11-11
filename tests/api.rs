@@ -284,3 +284,42 @@ async fn working_tree_endpoints_stage_commit_and_report_git_errors() {
         assert!(v["output"].as_str().unwrap().contains("nothing to commit"), "{v}");
     }
 }
+
+#[tokio::test]
+async fn operations_and_clone_requests_are_validated() {
+    let t = TestRepo::new();
+    let a = t.commit_file("a.txt", "1", "first");
+    let api = Api::new(None);
+    let id = api.open(&t).await;
+
+    let (status, v) =
+        api.post(&format!("/api/repos/{id}/op"), json!({ "op": "branch-create", "name": "topic", "at": a.to_string() })).await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    let (_, refs) = api.get(&format!("/api/repos/{id}/refs")).await;
+    let names: Vec<&str> = refs["branches"].as_array().unwrap().iter().map(|b| b["name"].as_str().unwrap()).collect();
+    assert_eq!(names, vec!["main", "topic"]);
+    // The graph already shows the new label: the operation refreshed the session.
+    let (_, graph) = api.get(&format!("/api/repos/{id}/graph")).await;
+    let labels: Vec<&str> = graph["rows"][0]["r"].as_array().unwrap().iter().map(|l| l["name"].as_str().unwrap()).collect();
+    assert_eq!(labels, vec!["main", "topic"]);
+
+    let (status, v) = api.post(&format!("/api/repos/{id}/op"), json!({ "op": "branch-create", "name": "topic" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(v["error"].as_str().unwrap().contains("already exists"));
+    let (status, _) = api.post(&format!("/api/repos/{id}/op"), json!({ "op": "no-such-operation" })).await;
+    assert!(status.is_client_error());
+
+    let (status, v) = api.post("/api/clone", json!({ "url": "", "parent": t.path().display().to_string() })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(v["error"].as_str().unwrap().contains("URL"));
+    let (status, v) = api.post("/api/clone", json!({ "url": "https://example.com/x.git", "parent": "/no/such/folder/anywhere" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(v["error"].as_str().unwrap().contains("not a folder"));
+    let (status, v) = api
+        .post("/api/clone", json!({ "url": "https://example.com/x.git", "parent": t.path().display().to_string(), "name": "../escape" }))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(v["error"].as_str().unwrap().contains("not a folder name"), "{v}");
+    let (_, jobs) = api.get("/api/jobs").await;
+    assert!(jobs.as_array().unwrap().is_empty());
+}

@@ -7,6 +7,7 @@ import {
 import { createGraphView } from '/graph.js';
 import { createDiffPanel, setHighlighter } from '/diff.js';
 import { createChanges } from '/changes.js';
+import { createActions, openCloneDialog } from '/actions.js';
 import { highlightLine } from '/highlight.js';
 
 setHighlighter(highlightLine);
@@ -68,8 +69,32 @@ function connectEvents() {
     if (ev.type === 'repo') {
       const tab = state.tabs.find((t) => t.id === ev.id);
       if (tab) tab.onRepoEvent(ev);
+    } else if (ev.type === 'job') {
+      const tab = ev.job.repo ? state.tabs.find((t) => t.id === ev.job.repo) : null;
+      if (tab) tab.actions.onJob(ev.job);
+      for (const fn of jobListeners.get(ev.job.id) || []) fn(ev.job);
     }
   };
+}
+
+// Listeners for jobs that belong to no repository tab (clone).
+const jobListeners = new Map();
+function onJobEvents(jobId, fn) {
+  const set = jobListeners.get(jobId) || new Set();
+  jobListeners.set(jobId, set);
+  set.add(fn);
+  return () => { set.delete(fn); if (!set.size) jobListeners.delete(jobId); };
+}
+
+function cloneRepo() {
+  if (!state.info?.git) { toast('Git was not found on PATH. Install Git to clone a repository.', 'error'); return; }
+  openCloneDialog({
+    desktop: !!state.info?.desktop,
+    defaultParent: store.get('gl.cloneDir', ''),
+    rememberParent: (dir) => store.set('gl.cloneDir', dir),
+    jobEvents: onJobEvents,
+    onDone: (path) => { toast('Clone finished', 'success'); openRepo(path); },
+  });
 }
 
 // A folder dropped on the desktop window (see src/bin/desktop.rs).
@@ -154,9 +179,13 @@ function makeTab({ id, path, name }) {
   const noticeEl = h('div', { class: 'notice', hidden: true });
   const changesBtn = h('button', { class: 'btn', hidden: true, title: 'Show the uncommitted changes', onclick: () => tab.graph.selectRow(0, { reveal: true }) });
   const resizer = h('div', { class: 'pane-resizer' });
+  const actionsHost = h('div', { class: 'tb-group' });
+  tab.actionsCtx = { repoId: id, getRefs: () => tab.refs, hasGit: () => !!state.info?.git, history: null };
+  tab.actions = createActions(tab.actionsCtx);
+  actionsHost.append(tab.actions.toolbar, tab.actions.statusEl);
   tab.el = h('div', { class: 'repo-view' },
     h('div', { class: 'toolbar' },
-      h('div', { class: 'tb-group' }, titleEl),
+      h('div', { class: 'tb-group' }, titleEl, actionsHost),
       h('div', { class: 'tb-group' },
         changesBtn,
         h('div', { class: 'search-box' }, icon('search'), searchInput), searchCount, prevBtn, nextBtn,
@@ -176,9 +205,10 @@ function makeTab({ id, path, name }) {
   tab.graph = createGraphView({
     repoId: id,
     onSelect: (row) => showCommit(row),
-    onContext: (e, row, ref) => commitMenu(e, row, ref),
+    onContext: (e, row, ref) => tab.actions.commitMenu(e, row, ref),
   });
   center.append(tab.graph.el);
+  tab.actions.enableBranchDrag(tab.graph.el);
   tab.ready = tab.graph.init().catch((e) => {
     center.replaceChildren(h('div', { class: 'error-box' }, icon('alert'), h('pre', {}, e.message)));
   });
@@ -202,6 +232,7 @@ function makeTab({ id, path, name }) {
       tab.refsError = e.message;
     }
     drawTitle();
+    tab.actions.drawToolbar();
     if (state.active === id) { renderSidebar(); document.title = `${tab.name} — ${APP_NAME}`; }
   }
 
@@ -383,16 +414,6 @@ function makeTab({ id, path, name }) {
   });
   tab.changes.reload();
 
-  // ---- context menu of a commit row
-  function commitMenu(e, row, ref) {
-    if (row.k === 'wip') return;
-    contextMenu(e, [
-      ref ? { icon: 'copy', label: `Copy name: ${ref.name}`, run: () => copyText(ref.name) } : null,
-      { icon: 'copy', label: 'Copy commit id', sub: row.o.slice(0, 10), run: () => copyText(row.o, 'Commit id copied') },
-      { icon: 'copy', label: 'Copy message', run: () => copyText(row.s) },
-    ]);
-  }
-
   tab.selectOid = async (oid) => {
     if (!(await tab.graph.selectOid(oid))) toast('This commit is not in the graph', 'error');
   };
@@ -492,6 +513,7 @@ function homePage() {
       gitNotice(),
       h('div', { class: 'home-bar' },
         h('button', { class: 'btn primary', onclick: pickAndOpen }, icon('folder'), 'Open repository', h('span', { class: 'kbd' }, 'Ctrl+O')),
+        h('button', { class: 'btn', onclick: cloneRepo }, icon('download'), 'Clone repository'),
         state.recent.length > 4 ? search : null,
         state.info?.desktop ? h('span', { class: 'muted small' }, 'or drop a folder on the window') : null),
       h('div', { class: 'home-section' }, state.recent.length ? 'Recent repositories' : 'No recent repositories yet'),
@@ -513,6 +535,7 @@ function sidebarFooter() {
 function openRepoMenu(anchor) {
   const items = [
     { icon: 'folder', label: 'Open repository…', hint: 'Ctrl+O', run: pickAndOpen },
+    { icon: 'download', label: 'Clone repository…', run: cloneRepo },
     { icon: 'home', label: 'Start page', run: () => activate('home') },
   ];
   const recent = state.recent.filter((r) => r.exists).slice(0, 12);
@@ -539,6 +562,7 @@ function renderSidebar() {
   const list = h('div', { class: 'sb-scroll' });
   filter.addEventListener('input', () => { tab.filter = filter.value; drawRefs(tab, list); });
   drawRefs(tab, list);
+  tab.actions.enableBranchDrag(list);
   const keepFocus = document.activeElement?.classList?.contains('sb-search');
   const scrollTop = $('.sb-scroll', sb)?.scrollTop || 0;
   sb.replaceChildren(head, h('div', { class: 'sb-search-wrap' }, icon('search', 13), filter), list, sidebarFooter());
@@ -547,18 +571,21 @@ function renderSidebar() {
 }
 
 function drawRefs(tab, list) {
-  if (tab.refsError) { list.replaceChildren(h('div', { class: 'sb-empty small error' }, tab.refsError)); return; }
+  if (tab.refsError) { fill(list, h('div', { class: 'sb-empty small error' }, tab.refsError)); return; }
   const refs = tab.refs;
-  if (!refs) { list.replaceChildren(h('div', { class: 'sb-empty small' }, h('span', { class: 'spinner' }))); return; }
+  if (!refs) { fill(list, h('div', { class: 'sb-empty small' }, h('span', { class: 'spinner' }))); return; }
+  const act = tab.actions;
   const q = tab.filter.trim().toLowerCase();
   const hit = (name) => !q || name.toLowerCase().includes(q);
   const closed = store.get('gl.sbClosed', { tags: true });
   const expanded = tab.expanded || (tab.expanded = {});
   const out = [];
-  const section = (key, title, items, render, empty) => {
+  const section = (key, title, items, render, empty, add = null) => {
     const isClosed = !q && !!closed[key];
-    out.push(h('button', { class: `sb-section${isClosed ? ' closed' : ''}`, onclick: () => { closed[key] = !closed[key]; store.set('gl.sbClosed', closed); drawRefs(tab, list); } },
-      h('span', { class: 'icon chev' }, icon('chevron', 12)), title, h('span', { class: 'sb-count' }, fmtNum(items.length))));
+    out.push(h('div', { class: 'sb-section-row' },
+      h('button', { class: `sb-section${isClosed ? ' closed' : ''}`, onclick: () => { closed[key] = !closed[key]; store.set('gl.sbClosed', closed); drawRefs(tab, list); } },
+        h('span', { class: 'icon chev' }, icon('chevron', 12)), title, h('span', { class: 'sb-count' }, fmtNum(items.length))),
+      add ? h('button', { class: 'icon-btn sb-add', title: add.title, onclick: add.run }, icon('plus', 13)) : null));
     if (isClosed) return;
     if (!items.length) { out.push(h('div', { class: 'sb-empty small' }, q ? 'No matches' : empty)); return; }
     const limit = expanded[key] ? items.length : SECTION_LIMIT;
@@ -568,12 +595,15 @@ function drawRefs(tab, list) {
   const go = (oid) => tab.selectOid(oid);
 
   section('local', 'Local branches', refs.branches.filter((b) => hit(b.name)), (b) => h('button', {
-    class: `sb-item${b.current ? ' current' : ''}`, title: b.upstream ? `${b.name} → ${b.upstream}` : b.name, onclick: () => go(b.oid),
-    oncontextmenu: (e) => contextMenu(e, [{ icon: 'copy', label: 'Copy branch name', run: () => copyText(b.name) }]),
+    class: `sb-item${b.current ? ' current' : ''}`, title: `${b.upstream ? `${b.name} → ${b.upstream}` : b.name}\nDouble click to check out · drag onto another branch to merge or rebase`,
+    dataset: { ref: b.name, kind: 'branch' },
+    onclick: () => go(b.oid),
+    ondblclick: () => { if (!b.current) act.checkout(b.name, 'branch'); },
+    oncontextmenu: (e) => contextMenu(e, act.branchItems(b.name)),
   }, icon(b.current ? 'check' : 'branch', 14), h('span', { class: 'sb-name' }, b.name),
   b.gone ? h('span', { class: 'sb-track gone', title: `The upstream ${b.upstream} no longer exists` }, 'gone')
     : (b.ahead || b.behind) ? h('span', { class: 'sb-track', title: `${b.ahead} ahead of, ${b.behind} behind ${b.upstream}` }, `${b.ahead ? `↑${b.ahead}` : ''}${b.ahead && b.behind ? ' ' : ''}${b.behind ? `↓${b.behind}` : ''}`) : null),
-  'No local branches');
+  'No local branches', { title: 'Create a branch', run: () => act.createBranch() });
 
   const remoteItems = [];
   for (const r of refs.remotes) {
@@ -581,23 +611,28 @@ function drawRefs(tab, list) {
     if (q && !branches.length) continue;
     remoteItems.push({ remote: r }, ...branches.map((b) => ({ branch: b })));
   }
-  section('remotes', 'Remotes', remoteItems, (it) => it.remote
-    ? h('div', { class: 'sb-group', title: it.remote.url || '' }, icon('cloud', 13), h('span', { class: 'sb-name' }, it.remote.name))
+  section('remotes', 'Remotes', remoteItems, (it) => (it.remote
+    ? h('div', { class: 'sb-group', title: `${it.remote.url || ''}\nRight click for fetch, edit, remove`, oncontextmenu: (e) => contextMenu(e, act.remoteItems(it.remote)) },
+      icon('cloud', 13), h('span', { class: 'sb-name' }, it.remote.name))
     : h('button', {
-      class: 'sb-item nested', title: it.branch.full, onclick: () => go(it.branch.oid),
-      oncontextmenu: (e) => contextMenu(e, [{ icon: 'copy', label: 'Copy branch name', run: () => copyText(it.branch.full) }]),
-    }, icon('branch', 14), h('span', { class: 'sb-name' }, it.branch.name)), 'No remotes');
+      class: 'sb-item nested', title: `${it.branch.full}\nDouble click to check out as a local branch`,
+      dataset: { ref: it.branch.full, kind: 'remote' },
+      onclick: () => go(it.branch.oid),
+      ondblclick: () => act.checkout(it.branch.full, 'remote'),
+      oncontextmenu: (e) => contextMenu(e, act.remoteBranchItems(it.branch.full)),
+    }, icon('branch', 14), h('span', { class: 'sb-name' }, it.branch.name))), 'No remotes', { title: 'Add a remote', run: () => act.addRemote() });
 
   section('tags', 'Tags', refs.tags.filter((t) => hit(t.name)), (t) => h('button', {
     class: 'sb-item', title: t.annotated ? `${t.name} (annotated)` : t.name, onclick: () => go(t.oid),
-    oncontextmenu: (e) => contextMenu(e, [{ icon: 'copy', label: 'Copy tag name', run: () => copyText(t.name) }]),
-  }, icon('tag', 14), h('span', { class: 'sb-name' }, t.name)), 'No tags');
+    oncontextmenu: (e) => contextMenu(e, act.tagItems(t.name)),
+  }, icon('tag', 14), h('span', { class: 'sb-name' }, t.name)), 'No tags', { title: 'Create a tag at HEAD', run: () => act.createTag() });
 
   section('stashes', 'Stashes', refs.stashes.filter((s) => hit(s.message)), (s) => h('button', {
     class: 'sb-item', title: s.message, onclick: () => go(s.oid),
-  }, icon('stash', 14), h('span', { class: 'sb-name' }, s.message || `stash@{${s.index}}`)), 'No stashes');
+    oncontextmenu: (e) => contextMenu(e, act.stashItems(s.index, s.message)),
+  }, icon('stash', 14), h('span', { class: 'sb-name' }, s.message || `stash@{${s.index}}`)), 'No stashes', { title: 'Stash the uncommitted changes', run: () => act.stashSave() });
 
-  list.replaceChildren(...out);
+  fill(list, out);
 }
 
 // ---------------------------------------------------------------- layout & keys
