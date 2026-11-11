@@ -158,7 +158,7 @@ function makeTab({ id, path, name }) {
     noticeEl,
     h('div', { class: 'repo-body' }, center, resizer, detailEl));
 
-  const detailW = store.get('gl.detailW', 420);
+  const detailW = store.get('gl.detailW', 380);
   detailEl.style.width = `${detailW}px`;
   dragResize(resizer, {
     onStart: () => detailEl.offsetWidth,
@@ -276,7 +276,7 @@ function makeTab({ id, path, name }) {
     return h('div', { class: 'who' }, avatar(p.name, p.email, true),
       h('div', { class: 'who-text' },
         h('span', { class: 'who-name', title: `${p.name} <${p.email}>` }, p.name),
-        h('span', { class: 'who-sub', title: p.email }, `${label} · ${fmtDate(p.time)} · ${relTime(p.time)}`)));
+        h('span', { class: 'who-sub', title: p.email }, `${label} · ${fmtDate(p.time)}${/ago|now/.test(relTime(p.time)) ? ` · ${relTime(p.time)}` : ''}`)));
   }
 
   function drawDetail() {
@@ -309,7 +309,8 @@ function makeTab({ id, path, name }) {
       h('span', {}, `${fmtNum(c.files.length)} changed file${c.files.length === 1 ? '' : 's'}`),
       c.parents.length > 1 ? h('span', { class: 'badge muted', title: 'Changes compared with the first parent' }, 'vs first parent') : null,
       h('span', { class: 'spacer' }),
-      h('span', { class: 'stat-add' }, `+${fmtNum(c.additions)}`), h('span', { class: 'stat-del' }, `−${fmtNum(c.deletions)}`));
+      c.additions ? h('span', { class: 'stat-add' }, `+${fmtNum(c.additions)}`) : null,
+      c.deletions ? h('span', { class: 'stat-del' }, `−${fmtNum(c.deletions)}`) : null);
     const files = h('div', { class: 'files' }, c.files.map((f) => fileRow(f, () => openDiff(f))));
     if (!c.files.length) files.append(h('div', { class: 'sb-empty small' }, 'This commit changes no files.'));
     detailEl.replaceChildren(head, filesHead, files);
@@ -385,7 +386,7 @@ function renderTabBar() {
   const bar = $('.tabbar');
   if (!bar) return;
   fill(bar,
-    h('div', { class: `tab home${state.active === 'home' ? ' active' : ''}`, title: 'Start page', onclick: () => activate('home') }, icon('home')),
+    h('div', { class: `tab tab-home${state.active === 'home' ? ' active' : ''}`, title: 'Start page', onclick: () => activate('home') }, icon('home')),
     state.tabs.map((t) => h('div', {
       class: `tab${t.id === state.active ? ' active' : ''}`, title: t.path,
       onclick: () => activate(t.id),

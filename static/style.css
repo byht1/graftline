@@ -206,7 +206,7 @@
   --border: #181a1f;
   --border-strong: #3e4452;
   --text: #abb2bf;
-  --muted: #8b929e;
+  --muted: #9299a5;
   --dim: #5c6370;
   --accent: #61afef;
   --accent-text: #1e2127;
@@ -543,7 +543,7 @@ select.input { padding-right: 4px; }
 .tab.active { background: var(--bg); color: var(--text); }
 .tab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--bg); }
 .tab.active::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--accent); }
-.tab.home { padding: 0 12px; }
+.tab.tab-home { padding: 0 12px; }
 .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-close { border: 0; background: none; padding: 2px; border-radius: 4px; cursor: pointer; color: var(--dim); display: flex; opacity: 0; }
 .tab:hover .tab-close, .tab.active .tab-close { opacity: 1; }
@@ -657,7 +657,7 @@ select.input { padding-right: 4px; }
 .c5 { --c: var(--graph-5); } .c6 { --c: var(--graph-6); } .c7 { --c: var(--graph-7); } .c8 { --c: var(--graph-8); }
 
 /* ------------------------------------------------ detail panel */
-.detail { width: 420px; flex: none; background: var(--panel); display: flex; flex-direction: column; min-height: 0; min-width: 260px; }
+.detail { width: 380px; flex: none; background: var(--panel); display: flex; flex-direction: column; min-height: 0; min-width: 260px; }
 .detail-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); padding: 24px; text-align: center; }
 .detail-empty .icon { color: var(--dim); }
 .detail-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex: none; max-height: 45%; overflow-y: auto; }
@@ -837,3 +837,4 @@ select.input { padding-right: 4px; }
 .g-author { width: var(--w-author, 150px); }
 .g-date { width: var(--w-date, 118px); }
 .g-sha { width: var(--w-sha, 72px); }
+.graph.no-sha .g-sha, .graph.no-date .g-date { display: none; }

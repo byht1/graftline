@@ -37,7 +37,11 @@ fn bench(path: &std::path::Path) -> anyhow::Result<()> {
     println!("commits:           {}", h.commits.len());
     println!("graph width:       {} lanes", h.layout.width);
     println!("refs read:         {:>7.1} ms", t_refs.as_secs_f64() * 1e3);
-    println!("history + layout:  {:>7.1} ms ({} threads)", (t_build - t_refs).as_secs_f64() * 1e3, std::thread::available_parallelism().map_or(1, |n| n.get()).min(12));
+    println!(
+        "history + layout:  {:>7.1} ms ({} threads)",
+        (t_build - t_refs).as_secs_f64() * 1e3,
+        std::thread::available_parallelism().map_or(1, |n| n.get()).min(12)
+    );
     println!("first page (200):  {:>7.1} ms ({} KB of JSON)", (t_page - t_build).as_secs_f64() * 1e3, page.len() / 1024);
     println!("total, first open: {:>7.1} ms", t_page.as_secs_f64() * 1e3);
     let t1 = Instant::now();
@@ -73,7 +77,9 @@ async fn main() -> anyhow::Result<()> {
     if let Some(path) = &cli.bench {
         return bench(path);
     }
-    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "graftline=info,warn".into())).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "graftline=info,warn".into()))
+        .init();
     let (app, _) = router(Options { data_dir: cli.data_dir.unwrap_or_else(default_data_dir), app_token: None, open: cli.paths });
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", cli.port)).await?;
     println!("Graftline UI: http://127.0.0.1:{}", cli.port);

@@ -373,9 +373,7 @@ struct DiffQuery {
 }
 
 async fn get_diff(State(st): State<Shared>, Path(id): Path<String>, Query(q): Query<DiffQuery>) -> ApiResult<Json<repo::FileDiff>> {
-    Ok(Json(
-        st.with_repo(&id, move |r| repo::commit_file_diff(r, repo::parse_oid(&q.commit)?, &q.path, q.old_path.as_deref())).await?,
-    ))
+    Ok(Json(st.with_repo(&id, move |r| repo::commit_file_diff(r, repo::parse_oid(&q.commit)?, &q.path, q.old_path.as_deref())).await?))
 }
 
 // ---------- auth ----------

@@ -13,7 +13,8 @@ const MAX_PAGES = 80;  // pages kept in memory
 // to rows proportionally instead of 1:1.
 const MAX_SCROLL = 12_000_000;
 const THROUGH = 0, IN = 1, OUT = 2;
-const DEFAULT_COLS = { refs: 150, graph: 0, author: 150, date: 118, sha: 72 };
+const DEFAULT_COLS = { refs: 136, graph: 0, author: 140, date: 96, sha: 68 };
+const AUTO_LANES = 10; // lanes the graph column shows before the user resizes it
 
 export function createGraphView({ repoId, onSelect, onContext }) {
   const st = {
@@ -37,7 +38,7 @@ export function createGraphView({ repoId, onSelect, onContext }) {
   const rowEls = new Map();
 
   // ---------------------------------------------------------------- geometry
-  const graphWidth = () => st.cols.graph || Math.min(Math.max(st.width, 2), 12) * LANE + PAD * 2 - LANE + 8;
+  const graphWidth = () => st.cols.graph || Math.min(Math.max(st.width, 2), AUTO_LANES) * LANE + PAD * 2 - LANE + 8;
   const laneX = (col) => PAD + col * LANE;
   const fullHeight = () => st.total * ROW;
   const spaceHeight = () => Math.min(fullHeight(), MAX_SCROLL);
@@ -248,6 +249,14 @@ export function createGraphView({ repoId, onSelect, onContext }) {
     paths.forEach((p, c) => { ctx.strokeStyle = st.colors.lanes[c]; ctx.stroke(p); });
     for (const [d, x, y] of nodes) {
       const color = st.colors.lanes[d.cl % st.colors.lanes.length];
+      if (x > w - 6) {
+        // The node lies right of the visible column: show an arrow at the edge instead.
+        ctx.fillStyle = st.colors.bg;
+        ctx.fillRect(w - 13, y - 7, 13, 14);
+        ctx.beginPath(); ctx.moveTo(w - 10, y - 4.5); ctx.lineTo(w - 4, y); ctx.lineTo(w - 10, y + 4.5);
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+        continue;
+      }
       const head = (d.r || []).some((l) => l.current);
       ctx.fillStyle = st.colors.bg;
       ctx.strokeStyle = color;
@@ -323,7 +332,13 @@ export function createGraphView({ repoId, onSelect, onContext }) {
     e.preventDefault();
     selectRow(Math.max(0, Math.min(st.total - 1, to)), { reveal: true });
   });
-  const resizeObs = new ResizeObserver(schedule);
+  // A narrow pane drops the hash column first, then the date.
+  const resizeObs = new ResizeObserver(() => {
+    const w = root.clientWidth;
+    root.classList.toggle('no-sha', w < 860);
+    root.classList.toggle('no-date', w < 700);
+    schedule();
+  });
   resizeObs.observe(scroller);
   const offTheme = onThemeChange(() => { readColors(); schedule(); });
 

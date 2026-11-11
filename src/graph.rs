@@ -116,7 +116,9 @@ impl Layout {
             }
             if row >= from {
                 let mut edges: Vec<Edge> = stored.iter().filter(|e| e.kind == EdgeKind::In).copied().collect();
-                edges.extend(lanes.iter().enumerate().filter_map(|(c, l)| l.map(|color| Edge { kind: EdgeKind::Through, col: c as u16, color })));
+                edges.extend(
+                    lanes.iter().enumerate().filter_map(|(c, l)| l.map(|color| Edge { kind: EdgeKind::Through, col: c as u16, color })),
+                );
                 edges.extend(stored.iter().filter(|e| e.kind == EdgeKind::Out));
                 out.push(RowGraph { col: self.rows[row].col, color: self.rows[row].color, edges });
             }
@@ -178,7 +180,8 @@ impl Lanes {
 /// Computes the layout. `parents[i]` holds the row indices of the parents of row `i`;
 /// every parent index must be greater than `i`.
 pub fn layout(parents: &[Vec<u32>]) -> Layout {
-    let mut out = Layout { rows: Vec::with_capacity(parents.len()), edges: Vec::with_capacity(parents.len() * 2 + 16), ..Default::default() };
+    let mut out =
+        Layout { rows: Vec::with_capacity(parents.len()), edges: Vec::with_capacity(parents.len() * 2 + 16), ..Default::default() };
     let mut lanes = Lanes::default();
     let mut next_color: u8 = 0;
     let mut new_color = || {

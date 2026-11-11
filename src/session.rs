@@ -107,20 +107,24 @@ impl Session {
                 // First build of this launch: start from the commits saved last time.
                 *cache = CommitCache::load_file(&this.cache_file);
             }
-            let h = history::build(&r, &mut cache, tips, wip)?;
-            // Save when enough new commits were read to make the next launch faster.
-            if h.read >= SAVE_AFTER {
-                if let Err(e) = cache.save(&this.cache_file, Some(&h.oids())) {
-                    tracing::warn!("cannot save the commit cache {}: {e:#}", this.cache_file.display());
-                }
-            }
-            Ok(Some(h))
+            Ok(Some(history::build(&r, &mut cache, tips, wip)?))
         })
         .await??;
         match built {
             Some(h) => {
                 let h = Arc::new(h);
                 *self.history.write().await = Some(h.clone());
+                // Save when enough new commits were read to make the next launch faster.
+                // This runs after the history is available, so the UI does not wait for it.
+                if h.read >= SAVE_AFTER {
+                    let (this, saved) = (self.clone(), h.clone());
+                    tokio::task::spawn_blocking(move || {
+                        let cache = this.cache.lock().unwrap();
+                        if let Err(e) = cache.save(&this.cache_file, Some(&saved.oids())) {
+                            tracing::warn!("cannot save the commit cache {}: {e:#}", this.cache_file.display());
+                        }
+                    });
+                }
                 Ok(h)
             }
             None => Ok(self.history.read().await.clone().expect("history exists when unchanged")),

@@ -79,33 +79,45 @@ fn mac_menu() -> muda::Menu {
     use muda::{AboutMetadata, Menu, PredefinedMenuItem, Submenu};
     let menu = Menu::new();
     let about = AboutMetadata { name: Some(APP_NAME.into()), version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() };
-    let app = Submenu::with_items(APP_NAME, true, &[
-        &PredefinedMenuItem::about(None, Some(about)),
-        &PredefinedMenuItem::separator(),
-        &PredefinedMenuItem::services(None),
-        &PredefinedMenuItem::separator(),
-        &PredefinedMenuItem::hide(None),
-        &PredefinedMenuItem::hide_others(None),
-        &PredefinedMenuItem::show_all(None),
-        &PredefinedMenuItem::separator(),
-        &PredefinedMenuItem::quit(None),
-    ]);
-    let edit = Submenu::with_items("Edit", true, &[
-        &PredefinedMenuItem::undo(None),
-        &PredefinedMenuItem::redo(None),
-        &PredefinedMenuItem::separator(),
-        &PredefinedMenuItem::cut(None),
-        &PredefinedMenuItem::copy(None),
-        &PredefinedMenuItem::paste(None),
-        &PredefinedMenuItem::select_all(None),
-    ]);
-    let window = Submenu::with_items("Window", true, &[
-        &PredefinedMenuItem::minimize(None),
-        &PredefinedMenuItem::maximize(None),
-        &PredefinedMenuItem::separator(),
-        &PredefinedMenuItem::close_window(None),
-        &PredefinedMenuItem::fullscreen(None),
-    ]);
+    let app = Submenu::with_items(
+        APP_NAME,
+        true,
+        &[
+            &PredefinedMenuItem::about(None, Some(about)),
+            &PredefinedMenuItem::separator(),
+            &PredefinedMenuItem::services(None),
+            &PredefinedMenuItem::separator(),
+            &PredefinedMenuItem::hide(None),
+            &PredefinedMenuItem::hide_others(None),
+            &PredefinedMenuItem::show_all(None),
+            &PredefinedMenuItem::separator(),
+            &PredefinedMenuItem::quit(None),
+        ],
+    );
+    let edit = Submenu::with_items(
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(None),
+            &PredefinedMenuItem::redo(None),
+            &PredefinedMenuItem::separator(),
+            &PredefinedMenuItem::cut(None),
+            &PredefinedMenuItem::copy(None),
+            &PredefinedMenuItem::paste(None),
+            &PredefinedMenuItem::select_all(None),
+        ],
+    );
+    let window = Submenu::with_items(
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(None),
+            &PredefinedMenuItem::maximize(None),
+            &PredefinedMenuItem::separator(),
+            &PredefinedMenuItem::close_window(None),
+            &PredefinedMenuItem::fullscreen(None),
+        ],
+    );
     for sub in [app, edit, window].into_iter().flatten() {
         let _ = menu.append(&sub);
     }
@@ -151,7 +163,13 @@ impl App {
         format!("{}{path}{sep}token={}{hash}", self.base, self.token)
     }
 
-    fn open_window(&mut self, target: &EventLoopWindowTarget<UserEvent>, proxy: &EventLoopProxy<UserEvent>, url: &str, main: bool) -> anyhow::Result<()> {
+    fn open_window(
+        &mut self,
+        target: &EventLoopWindowTarget<UserEvent>,
+        proxy: &EventLoopProxy<UserEvent>,
+        url: &str,
+        main: bool,
+    ) -> anyhow::Result<()> {
         let mut builder = WindowBuilder::new()
             .with_title(APP_NAME)
             .with_window_icon(self.icon.clone())

@@ -134,15 +134,11 @@ pub fn refs(repo: &Repository) -> Result<Refs> {
         let Some(oid) = b.get().target() else { continue };
         let configured = repo.branch_upstream_name(&format!("refs/heads/{name}")).ok();
         let upstream_ref = b.upstream().ok();
-        let upstream = upstream_ref
-            .as_ref()
-            .and_then(|u| u.name().ok().flatten().map(str::to_string))
-            .or_else(|| configured.as_ref().and_then(|c| c.as_str().ok().and_then(|s| s.strip_prefix("refs/remotes/")).map(str::to_string)));
-        let (ahead, behind) = upstream_ref
-            .as_ref()
-            .and_then(|u| u.get().target())
-            .and_then(|up| repo.graph_ahead_behind(oid, up).ok())
-            .unwrap_or((0, 0));
+        let upstream = upstream_ref.as_ref().and_then(|u| u.name().ok().flatten().map(str::to_string)).or_else(|| {
+            configured.as_ref().and_then(|c| c.as_str().ok().and_then(|s| s.strip_prefix("refs/remotes/")).map(str::to_string))
+        });
+        let (ahead, behind) =
+            upstream_ref.as_ref().and_then(|u| u.get().target()).and_then(|up| repo.graph_ahead_behind(oid, up).ok()).unwrap_or((0, 0));
         branches.push(Branch {
             current: head.branch.as_deref() == Some(name.as_str()),
             gone: upstream.is_some() && upstream_ref.is_none(),
@@ -153,7 +149,7 @@ pub fn refs(repo: &Repository) -> Result<Refs> {
             behind,
         });
     }
-    branches.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    branches.sort_by_key(|b| b.name.to_lowercase());
 
     let mut remotes: Vec<Remote> = Vec::new();
     if let Ok(names) = repo.remotes() {
@@ -184,7 +180,7 @@ pub fn refs(repo: &Repository) -> Result<Refs> {
         }
     }
     for r in &mut remotes {
-        r.branches.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        r.branches.sort_by_key(|b| b.name.to_lowercase());
     }
 
     let mut tags = Vec::new();
@@ -195,7 +191,7 @@ pub fn refs(repo: &Repository) -> Result<Refs> {
         let annotated = r.target().is_some_and(|t| t != commit.id());
         tags.push(Tag { name, oid: commit.id().to_string(), annotated });
     }
-    tags.sort_by(|a, b| natural_key(&b.name).cmp(&natural_key(&a.name)));
+    tags.sort_by_key(|t| std::cmp::Reverse(natural_key(&t.name)));
 
     let stashes = history::stashes(repo)
         .into_iter()

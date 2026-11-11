@@ -88,6 +88,8 @@ fn parse(repo: &Repository, oid: Oid) -> Result<Parsed> {
     })
 }
 
+/// More threads than this do not read faster: libgit2 serializes access to pack files.
+const MAX_THREADS: usize = 8;
 /// Commits a worker takes from the shared queue at once.
 const BATCH: usize = 32;
 
@@ -165,7 +167,7 @@ impl CommitCache {
     /// Each thread has its own repository handle: reading and inflating commit objects is
     /// what makes the first open of a big repository slow. Returns the number of commits read.
     pub fn preload(&mut self, root: &Path, tips: &[Oid]) -> usize {
-        let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 12);
+        let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, MAX_THREADS);
         let mut read = 0;
         // A second pass finds nothing unless a cached commit had an uncached ancestor.
         for _ in 0..4 {
@@ -491,12 +493,12 @@ pub fn build(repo: &Repository, cache: &mut CommitCache, tips: Tips, wip: bool) 
         let take = if kinds[me] == Kind::Stash { 1 } else { all.len() };
         let mut parents = Vec::with_capacity(take);
         for &p in all.iter().take(take) {
-            if !ids.contains_key(&p) {
+            if let std::collections::hash_map::Entry::Vacant(slot) = ids.entry(p) {
                 // A parent that is not in the object database: the edge of a shallow clone.
                 if cache.load(repo, p).is_none() {
                     continue;
                 }
-                ids.insert(p, oids.len() as u32);
+                slot.insert(oids.len() as u32);
                 oids.push(p);
                 kinds.push(Kind::Commit);
                 parent_oids.push(Vec::new());
