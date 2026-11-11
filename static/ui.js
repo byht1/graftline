@@ -247,6 +247,30 @@ export function openModal(title, body, footer, { wide = false, onClose = null } 
   return close;
 }
 
+/**
+ * Asks before an action. `body` describes what will happen (text or elements); `danger`
+ * marks an action that destroys data. Resolves to true when the user confirms.
+ */
+export function confirmDialog({ title, body, confirm = 'OK', cancel = 'Cancel', danger = false }) {
+  return new Promise((resolve) => {
+    let answer = false;
+    const ok = h('button', { class: `btn ${danger ? 'danger' : 'primary'}`, onclick: () => { answer = true; close(); } }, confirm);
+    const close = openModal(title, h('div', { class: 'confirm-body' }, body),
+      [h('button', { class: 'btn', onclick: () => close() }, cancel), ok], { onClose: () => resolve(answer) });
+    // Enter must not confirm a destructive action by accident: focus Cancel then.
+    queueMicrotask(() => (danger ? ok.previousSibling : ok)?.focus());
+  });
+}
+
+/** Shows an error. A failed git command is shown word for word with the command that caused it. */
+export function showError(e, title = 'The operation failed') {
+  if (!e?.command) { toast(e?.message || String(e), 'error'); return; }
+  openModal(title, h('div', { class: 'confirm-body' },
+    h('div', { class: 'muted small' }, 'Command'), h('pre', { class: 'cmd' }, e.command),
+    h('div', { class: 'muted small' }, 'Output'), h('pre', { class: 'cmd out' }, e.output || e.message)),
+  [h('button', { class: 'btn', onclick: () => copyText(`$ ${e.command}\n${e.output || e.message}`) }, icon('copy', 13), 'Copy')], { wide: true });
+}
+
 // ---------------------------------------------------------------- themes
 // Each theme is a set of CSS variables in style.css under :root[data-theme="<id>"].
 // The swatch shows background, accent and two graph colors.

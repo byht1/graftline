@@ -5,8 +5,10 @@ pub mod graph;
 pub mod history;
 pub mod prefs;
 pub mod repo;
+pub mod safety;
 pub mod session;
 pub mod watch;
+pub mod worktree;
 
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
@@ -89,6 +91,13 @@ impl IntoResponse for ApiError {
 impl<E: Into<anyhow::Error>> From<E> for ApiError {
     fn from(e: E) -> Self {
         let e: anyhow::Error = e.into();
+        // A failed git command is shown word for word, together with the command.
+        if let Some(git) = e.downcast_ref::<gitcli::GitError>() {
+            return ApiError(
+                StatusCode::BAD_REQUEST,
+                json!({ "error": git.to_string(), "command": git.command, "output": git.output, "code": git.code }),
+            );
+        }
         ApiError::new(StatusCode::BAD_REQUEST, format!("{e:#}"))
     }
 }
@@ -149,6 +158,8 @@ assets! {
     "ui.js" => "text/javascript; charset=utf-8",
     "graph.js" => "text/javascript; charset=utf-8",
     "diff.js" => "text/javascript; charset=utf-8",
+    "changes.js" => "text/javascript; charset=utf-8",
+    "highlight.js" => "text/javascript; charset=utf-8",
     "favicon.svg" => "image/svg+xml",
     "brand/symbol.svg" => "image/svg+xml",
 }
@@ -367,13 +378,117 @@ async fn get_commit(State(st): State<Shared>, Path((id, oid)): Path<(String, Str
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DiffQuery {
-    commit: String,
+    /// A commit id: the diff against its first parent.
+    commit: Option<String>,
+    /// `staged` or `unstaged`: a diff of the working tree. Used when `commit` is absent.
+    side: Option<worktree::Side>,
     path: String,
     old_path: Option<String>,
 }
 
 async fn get_diff(State(st): State<Shared>, Path(id): Path<String>, Query(q): Query<DiffQuery>) -> ApiResult<Json<repo::FileDiff>> {
-    Ok(Json(st.with_repo(&id, move |r| repo::commit_file_diff(r, repo::parse_oid(&q.commit)?, &q.path, q.old_path.as_deref())).await?))
+    Ok(Json(
+        st.with_repo(&id, move |r| match (&q.commit, q.side) {
+            (Some(commit), _) => repo::commit_file_diff(r, repo::parse_oid(commit)?, &q.path, q.old_path.as_deref()),
+            (None, Some(side)) => worktree::file_diff(r, side, &q.path, q.old_path.as_deref()),
+            (None, None) => Err(anyhow::anyhow!("Give a commit or a side")),
+        })
+        .await?,
+    ))
+}
+
+// ---------- handlers: working tree ----------
+
+async fn get_status(State(st): State<Shared>, Path(id): Path<String>) -> ApiResult<Json<worktree::WorkStatus>> {
+    Ok(Json(st.with_repo(&id, worktree::status).await?))
+}
+
+#[derive(Deserialize)]
+struct PathsBody {
+    paths: Vec<String>,
+}
+
+/// Runs a change of the repository, then refreshes the session so the UI hears about it
+/// at once instead of waiting for the file watch.
+async fn mutate<T: Send + 'static>(
+    st: &Shared,
+    id: &str,
+    f: impl FnOnce(&git2::Repository, &Session) -> anyhow::Result<T> + Send + 'static,
+) -> ApiResult<T> {
+    let s = st.session(id).await?;
+    let s2 = s.clone();
+    let result =
+        tokio::task::spawn_blocking(move || f(&repo::open(&s2.root)?, &s2)).await.map_err(|e| anyhow::anyhow!("task failed: {e}"))?;
+    // Refresh also after a failure: a git command may have changed something before it failed.
+    s.changed().await;
+    Ok(result?)
+}
+
+async fn stage(State(st): State<Shared>, Path(id): Path<String>, Json(req): Json<PathsBody>) -> ApiResult<Json<Value>> {
+    mutate(&st, &id, move |r, _| worktree::stage(r, &req.paths)).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn unstage(State(st): State<Shared>, Path(id): Path<String>, Json(req): Json<PathsBody>) -> ApiResult<Json<Value>> {
+    mutate(&st, &id, move |r, _| worktree::unstage(r, &req.paths)).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn discard(State(st): State<Shared>, Path(id): Path<String>, Json(req): Json<PathsBody>) -> ApiResult<Json<Value>> {
+    let snapshot = mutate(&st, &id, move |r, _| worktree::discard(r, &req.paths)).await?;
+    Ok(Json(json!({ "snapshot": snapshot })))
+}
+
+#[derive(Deserialize)]
+struct ApplyBody {
+    op: worktree::PatchOp,
+    path: String,
+    hunks: Vec<worktree::HunkSelection>,
+}
+
+async fn apply_selection(State(st): State<Shared>, Path(id): Path<String>, Json(req): Json<ApplyBody>) -> ApiResult<Json<Value>> {
+    let snapshot = mutate(&st, &id, move |r, _| worktree::apply_selection(r, req.op, &req.path, &req.hunks)).await?;
+    Ok(Json(json!({ "snapshot": snapshot })))
+}
+
+async fn commit(
+    State(st): State<Shared>,
+    Path(id): Path<String>,
+    Json(req): Json<worktree::CommitRequest>,
+) -> ApiResult<Json<worktree::CommitResult>> {
+    let has_git = st.git.is_some();
+    Ok(Json(mutate(&st, &id, move |r, s| worktree::commit(r, &s.root, has_git, &req)).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ResetSoftBody {
+    to: String,
+    expect_head: String,
+}
+
+async fn reset_soft(State(st): State<Shared>, Path(id): Path<String>, Json(req): Json<ResetSoftBody>) -> ApiResult<Json<Value>> {
+    mutate(&st, &id, move |r, _| worktree::reset_soft(r, &req.to, &req.expect_head)).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn list_snapshots(State(st): State<Shared>, Path(id): Path<String>) -> ApiResult<Json<Vec<safety::Snapshot>>> {
+    Ok(Json(st.with_repo(&id, safety::list).await?))
+}
+
+#[derive(Deserialize)]
+struct NameBody {
+    name: String,
+}
+
+async fn restore_snapshot(State(st): State<Shared>, Path(id): Path<String>, Json(req): Json<NameBody>) -> ApiResult<Json<Value>> {
+    let files = mutate(&st, &id, move |r, _| safety::restore(r, &req.name)).await?;
+    Ok(Json(json!({ "files": files })))
+}
+
+async fn drop_snapshot(State(st): State<Shared>, Path(id): Path<String>, Json(req): Json<NameBody>) -> ApiResult<Json<Value>> {
+    st.with_repo(&id, move |r| safety::drop(r, &req.name)).await?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 // ---------- auth ----------
@@ -433,7 +548,17 @@ pub fn router(opts: Options) -> (Router, Shared) {
         .route("/repos/{id}/graph/search", get(search_graph))
         .route("/repos/{id}/graph/locate", get(locate))
         .route("/repos/{id}/commit/{oid}", get(get_commit))
-        .route("/repos/{id}/diff", get(get_diff));
+        .route("/repos/{id}/diff", get(get_diff))
+        .route("/repos/{id}/status", get(get_status))
+        .route("/repos/{id}/stage", post(stage))
+        .route("/repos/{id}/unstage", post(unstage))
+        .route("/repos/{id}/discard", post(discard))
+        .route("/repos/{id}/apply", post(apply_selection))
+        .route("/repos/{id}/commit", post(commit))
+        .route("/repos/{id}/reset-soft", post(reset_soft))
+        .route("/repos/{id}/snapshots", get(list_snapshots))
+        .route("/repos/{id}/snapshots/restore", post(restore_snapshot))
+        .route("/repos/{id}/snapshots/drop", post(drop_snapshot));
 
     let app = Router::new()
         .route("/", get(index_page))

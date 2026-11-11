@@ -81,7 +81,8 @@ export function renderDiff(diff, { mode = 'unified', decorate = null, hunkAction
   let budget = CHUNK;
   const pending = [];
   diff.hunks.forEach((hunk, hi) => {
-    const el = h('div', { class: 'hunk' }, h('div', { class: 'hunk-head' }, hunk.header, hunkActions ? hunkActions(hunk, hi) : null));
+    const el = h('div', { class: 'hunk' }, h('div', { class: 'hunk-head' }, h('span', { class: 'hunk-text' }, hunk.header),
+      hunkActions ? h('span', { class: 'hunk-actions' }, hunkActions(hunk, hi)) : null));
     const build = () => {
       if (mode === 'split') {
         for (const [l, r] of splitRows(hunk.lines)) el.append(h('div', { class: 'split-row' }, half(l && l.t !== '+' ? l : null, 'o', lang), half(r && r.t !== '-' ? r : null, 'n', lang)));

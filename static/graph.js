@@ -378,6 +378,8 @@ export function createGraphView({ repoId, onSelect, onContext }) {
         if (anchor?.o && rows[0] != null) newTop = rows[0] * ROW + offset;
         newSel = st.selected ? (rows[1] ?? -1) : (st.selected === '' ? 0 : -1);
       }
+      // The working-tree row is gone when the tree became clean.
+      if (st.selected === '' && firstPage.rows[0]?.k !== 'wip') newSel = -1;
       // At the top of the list, stay at the top: new commits appear there.
       if (anchorRow === 0 && offset === 0) newTop = 0;
       if (newTop == null) newTop = Math.min(vt, Math.max(0, firstPage.total * ROW - scroller.clientHeight));

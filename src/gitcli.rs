@@ -2,6 +2,8 @@
 //! through it, so the user's SSH agent, credential helper, hooks and signing setup apply.
 
 use serde::Serialize;
+use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, Serialize)]
@@ -11,6 +13,28 @@ pub struct GitInfo {
     pub version: String,
 }
 
+/// A failed git command, shown to the user word for word.
+#[derive(Debug, Clone)]
+pub struct GitError {
+    /// The command line as the user could type it.
+    pub command: String,
+    pub code: Option<i32>,
+    /// stderr followed by stdout, trimmed.
+    pub output: String,
+}
+
+impl std::fmt::Display for GitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.output.is_empty() {
+            write!(f, "`{}` failed with exit code {}", self.command, self.code.map_or("?".to_string(), |c| c.to_string()))
+        } else {
+            write!(f, "{}", self.output)
+        }
+    }
+}
+
+impl std::error::Error for GitError {}
+
 /// A `git` command that never opens a console window and never waits for terminal input.
 pub fn command() -> Command {
     let mut cmd = Command::new("git");
@@ -19,6 +43,9 @@ pub fn command() -> Command {
     cmd.env("GIT_TERMINAL_PROMPT", "0");
     // Stable, parseable messages.
     cmd.env("LC_ALL", "C");
+    // No editor may open: every message comes from the app.
+    cmd.env("GIT_EDITOR", "true");
+    cmd.env("GIT_MERGE_AUTOEDIT", "no");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -38,4 +65,70 @@ pub fn detect() -> Option<GitInfo> {
     let text = String::from_utf8_lossy(&out.stdout);
     let version = text.trim().strip_prefix("git version ").unwrap_or(text.trim()).to_string();
     Some(GitInfo { version })
+}
+
+/// The command line for messages: `git` plus the arguments, quoted where needed.
+pub fn display(args: &[&str]) -> String {
+    let mut s = String::from("git");
+    for a in args {
+        s.push(' ');
+        if a.is_empty() || a.contains([' ', '"', '\'', '\\', '*', '?', '~', '^', '$', '&', '|', ';', '<', '>', '(', ')']) {
+            s.push('"');
+            s.push_str(&a.replace('\\', "\\\\").replace('"', "\\\""));
+            s.push('"');
+        } else {
+            s.push_str(a);
+        }
+    }
+    s
+}
+
+/// Runs `git <args>` in `root` and waits for it. `stdin` is written to the process when given.
+/// Returns stdout. A missing executable or a non-zero exit code is a [`GitError`].
+pub fn run(root: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<String, GitError> {
+    let command = display(args);
+    let fail = |code: Option<i32>, output: String| GitError { command: command.clone(), code, output };
+    let mut cmd = self::command();
+    cmd.current_dir(root).args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    if stdin.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+    let mut child = cmd.spawn().map_err(|e| {
+        let hint = if e.kind() == std::io::ErrorKind::NotFound {
+            "Git was not found on PATH. Install Git (https://git-scm.com/downloads) and restart the app.".to_string()
+        } else {
+            format!("Cannot start git: {e}")
+        };
+        fail(None, hint)
+    })?;
+    if let (Some(data), Some(mut pipe)) = (stdin, child.stdin.take()) {
+        // A closed pipe means git exited early; its exit code and stderr tell why.
+        let _ = pipe.write_all(data);
+    }
+    let out = child.wait_with_output().map_err(|e| fail(None, format!("Cannot read git output: {e}")))?;
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    if out.status.success() {
+        return Ok(stdout);
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let mut text = stderr.trim().to_string();
+    if !stdout.trim().is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(stdout.trim());
+    }
+    Err(fail(out.status.code(), text))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_quotes_arguments_with_spaces() {
+        assert_eq!(display(&["commit", "-m", "two words"]), "git commit -m \"two words\"");
+        assert_eq!(display(&["push", "--force-with-lease", "origin", "main"]), "git push --force-with-lease origin main");
+        assert_eq!(display(&["tag", ""]), "git tag \"\"");
+    }
 }

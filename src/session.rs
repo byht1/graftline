@@ -94,7 +94,8 @@ impl Session {
         let built = tokio::task::spawn_blocking(move || -> Result<Option<History>> {
             let r = repo::open(&this.root)?;
             let tips = history::read_tips(&r)?;
-            let wip = false;
+            // Uncommitted changes get their own row above HEAD.
+            let wip = crate::worktree::is_dirty(&r);
             if !force {
                 if let Some(cur) = &current {
                     if cur.fingerprint == history::fingerprint(&tips, wip) {
@@ -137,14 +138,36 @@ impl Session {
 
     /// Called by the watcher after a batch of file changes.
     async fn on_fs_change(self: Arc<Self>, change: watch::Change) {
+        // Build output and other ignored files change nothing the app shows.
+        if !change.git && !change.many {
+            let (this, paths) = (self.clone(), change.paths.clone());
+            let all_ignored = tokio::task::spawn_blocking(move || {
+                let Ok(r) = repo::open(&this.root) else { return false };
+                paths.iter().all(|p| r.is_path_ignored(p).unwrap_or(false))
+            })
+            .await
+            .unwrap_or(false);
+            if all_ignored {
+                return;
+            }
+        }
+        self.refresh(change.git, change.tree()).await;
+    }
+
+    /// Tells the UI that the repository changed, after an operation of the app itself.
+    pub async fn changed(self: &Arc<Self>) {
+        self.refresh(true, true).await;
+    }
+
+    async fn refresh(self: &Arc<Self>, git: bool, tree: bool) {
         let before = self.history.read().await.as_ref().map(|h| h.fingerprint);
         let mut graph = false;
-        if change.git && before.is_some() {
+        if before.is_some() {
             match self.rebuild(false).await {
                 Ok(h) => graph = Some(h.fingerprint) != before,
                 Err(e) => tracing::warn!("refresh failed for {}: {e:#}", self.root.display()),
             }
         }
-        self.emit(json!({ "type": "repo", "id": self.id, "git": change.git, "tree": change.tree(), "graph": graph }));
+        self.emit(json!({ "type": "repo", "id": self.id, "git": git, "tree": tree, "graph": graph }));
     }
 }

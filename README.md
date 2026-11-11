@@ -20,7 +20,7 @@ Node.js is not needed.
 ## Performance
 
 Measured, not estimated. Repository: [git/git](https://github.com/git/git), 86,230 commits
-reachable from all refs, 1,018 tags. Machine: Windows 11, 12 logical cores, NVMe SSD,
+reachable from all refs, 1,018 tags. Machine: Windows 11, 12 logical cores,
 release build.
 
 | Step | Time |

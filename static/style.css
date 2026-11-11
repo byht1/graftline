@@ -838,3 +838,52 @@ select.input { padding-right: 4px; }
 .g-date { width: var(--w-date, 118px); }
 .g-sha { width: var(--w-sha, 72px); }
 .graph.no-sha .g-sha, .graph.no-date .g-date { display: none; }
+
+/* ------------------------------------------------ working tree panel */
+.wip-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.wip-head { display: flex; align-items: center; gap: 8px; padding: 9px 8px 9px 14px; border-bottom: 1px solid var(--border); flex: none; }
+.wip-head > .icon { color: var(--muted); }
+.wip-title { font-weight: 600; font-size: 14px; }
+.wip-lists { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }
+.wip-section {
+  display: flex; align-items: center; gap: 8px; padding: 8px 8px 6px 14px; position: sticky; top: 0; z-index: 1; background: var(--panel);
+  color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; min-height: 38px;
+}
+.wip-section .btn { text-transform: none; letter-spacing: 0; }
+.wip-files { padding: 0 6px; }
+.file-actions { display: none; gap: 2px; flex: none; margin: -3px 0; }
+.file:hover .file-actions, .file:focus-within .file-actions { display: inline-flex; }
+div.file { outline: none; }
+div.file:focus-visible { box-shadow: inset 0 0 0 1px var(--sel); }
+.commit-box { flex: none; border-top: 1px solid var(--border); padding: 10px; display: flex; flex-direction: column; gap: 8px; background: var(--panel); }
+.commit-row { display: flex; align-items: center; gap: 8px; }
+.commit-row .input { flex: 1; }
+.commit-box .input.area { min-height: 54px; max-height: 40vh; font-family: var(--font); font-size: 13px; }
+.commit-box label.check { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+.commit-box .over { color: var(--danger); }
+.wip-warn { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; padding: 6px 8px; border-radius: var(--radius); background: var(--mod-bg); border: 1px solid var(--mod-border); }
+.wip-warn .icon { color: var(--mod-border); margin-top: 1px; }
+
+/* staging controls in a diff */
+.hunk-head { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.hunk-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hunk-actions { display: inline-flex; gap: 4px; flex: none; font-family: var(--font); position: sticky; right: 8px; }
+.diff-actions { display: inline-flex; align-items: center; gap: 6px; flex: none; font-family: var(--font); }
+.dl.pickable .dl-no, .dl.pickable .dl-sign { cursor: pointer; }
+.dl.pickable:hover .dl-no { color: var(--text); }
+.dl.picked { box-shadow: inset 3px 0 0 var(--sel); }
+.dl.picked .dl-no { color: var(--text); font-weight: 700; background: var(--row-sel); }
+.dl.picked .dl-text { background: var(--row-sel); }
+
+/* confirmations and command output */
+.confirm-body { display: flex; flex-direction: column; gap: 10px; }
+.confirm-body p { margin: 0; }
+.confirm-list, .cmd {
+  margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg);
+  font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto;
+}
+.cmd.out { color: var(--danger); max-height: 320px; }
+.snap-list { display: flex; flex-direction: column; gap: 6px; }
+.snap { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.snap-text { flex: 1; min-width: 0; }
+.snap-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

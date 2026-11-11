@@ -5,7 +5,11 @@ import {
   currentTheme, openThemeMenu, fmtDate, relTime, fmtNum, avatar, dragResize,
 } from '/ui.js';
 import { createGraphView } from '/graph.js';
-import { createDiffPanel } from '/diff.js';
+import { createDiffPanel, setHighlighter } from '/diff.js';
+import { createChanges } from '/changes.js';
+import { highlightLine } from '/highlight.js';
+
+setHighlighter(highlightLine);
 
 // ---------------------------------------------------------------- state
 const state = {
@@ -148,11 +152,13 @@ function makeTab({ id, path, name }) {
   const prevBtn = h('button', { class: 'icon-btn', title: 'Previous match (Shift+Enter)', disabled: true, onclick: () => step(-1) }, icon('up'));
   const nextBtn = h('button', { class: 'icon-btn', title: 'Next match (Enter)', disabled: true, onclick: () => step(1) }, icon('down'));
   const noticeEl = h('div', { class: 'notice', hidden: true });
+  const changesBtn = h('button', { class: 'btn', hidden: true, title: 'Show the uncommitted changes', onclick: () => tab.graph.selectRow(0, { reveal: true }) });
   const resizer = h('div', { class: 'pane-resizer' });
   tab.el = h('div', { class: 'repo-view' },
     h('div', { class: 'toolbar' },
       h('div', { class: 'tb-group' }, titleEl),
       h('div', { class: 'tb-group' },
+        changesBtn,
         h('div', { class: 'search-box' }, icon('search'), searchInput), searchCount, prevBtn, nextBtn,
         h('button', { class: 'icon-btn', title: 'Refresh (F5)', onclick: () => tab.refresh(true) }, icon('refresh')))),
     noticeEl,
@@ -208,6 +214,7 @@ function makeTab({ id, path, name }) {
   };
 
   tab.onRepoEvent = (ev) => {
+    if (ev.tree || ev.git) tab.changes.reloadSoon();
     if (ev.git) { clearTimeout(refsTimer); refsTimer = setTimeout(loadRefs, 60); }
     if (ev.graph) tab.graph.reload().then((r) => { if (r?.selectionLost) showCommit(null); }).catch(() => {});
   };
@@ -247,7 +254,13 @@ function makeTab({ id, path, name }) {
   async function showCommit(row) {
     closeDiff();
     const req = ++detailReq;
-    if (!row || row.k === 'wip') {
+    if (row && row.k === 'wip') {
+      tab.detail = { wip: true };
+      fill(detailEl, tab.changes.el);
+      tab.changes.reload();
+      return;
+    }
+    if (!row) {
       tab.detail = null;
       drawDetail();
       return;
@@ -354,6 +367,21 @@ function makeTab({ id, path, name }) {
     for (const el of detailEl.querySelectorAll('.file')) el.classList.toggle('active', el.dataset.path === f.path);
   }
   tab.closeDiff = () => { const open = !!tab.diffPanel; closeDiff(); return open; };
+
+  // ---- working tree
+  tab.changes = createChanges({
+    repoId: id,
+    getRefs: () => tab.refs,
+    showDiff: (panel) => { closeDiff(); tab.diffPanel = panel; center.append(panel.el); },
+    closeDiff,
+    currentDiff: () => tab.diffPanel,
+    onStatus: (s) => {
+      const n = s ? s.staged.length + s.unstaged.length : 0;
+      changesBtn.hidden = !n;
+      fill(changesBtn, icon('edit', 14), 'Changes', h('span', { class: 'count' }, fmtNum(n)));
+    },
+  });
+  tab.changes.reload();
 
   // ---- context menu of a commit row
   function commitMenu(e, row, ref) {

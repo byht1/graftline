@@ -211,3 +211,76 @@ async fn ui_preferences_round_trip() {
     assert_eq!(prefs["rev"], 1);
     assert_eq!(prefs["items"], json!({ "gl.theme": "\"nord\"" }));
 }
+
+#[tokio::test]
+async fn working_tree_endpoints_stage_commit_and_report_git_errors() {
+    let t = TestRepo::new();
+    t.commit_file("a.txt", "one\ntwo\nthree\n", "base");
+    t.write("a.txt", "ONE\ntwo\nthree\nfour\n");
+    t.write("new.txt", "new\n");
+    let api = Api::new(None);
+    let id = api.open(&t).await;
+
+    let (_, status) = api.get(&format!("/api/repos/{id}/status")).await;
+    assert_eq!(status["unstaged"].as_array().unwrap().len(), 2);
+    assert!(status["staged"].as_array().unwrap().is_empty());
+    // The working-tree row is the first row of the graph.
+    let (_, graph) = api.get(&format!("/api/repos/{id}/graph")).await;
+    assert_eq!(graph["rows"][0]["k"], "wip");
+    assert_eq!(graph["rows"][0]["o"], "");
+    assert_eq!(graph["total"], 2);
+
+    let (_, diff) = api.get(&format!("/api/repos/{id}/diff?side=unstaged&path=a.txt")).await;
+    let header = diff["hunks"][0]["header"].as_str().unwrap().to_string();
+    let picked: Vec<usize> =
+        diff["hunks"][0]["lines"].as_array().unwrap().iter().enumerate().filter(|(_, l)| l["s"] == "four").map(|(i, _)| i).collect();
+    let (status_code, v) = api
+        .post(
+            &format!("/api/repos/{id}/apply"),
+            json!({ "op": "stage", "path": "a.txt", "hunks": [{ "index": 0, "header": header, "lines": picked }] }),
+        )
+        .await;
+    assert_eq!(status_code, StatusCode::OK, "{v}");
+    let (_, staged) = api.get(&format!("/api/repos/{id}/diff?side=staged&path=a.txt")).await;
+    let added: Vec<&str> =
+        staged["hunks"][0]["lines"].as_array().unwrap().iter().filter(|l| l["t"] == "+").map(|l| l["s"].as_str().unwrap()).collect();
+    assert_eq!(added, vec!["four"]);
+
+    // A stale header is refused with a clear message.
+    let (status_code, v) = api
+        .post(
+            &format!("/api/repos/{id}/apply"),
+            json!({ "op": "stage", "path": "a.txt", "hunks": [{ "index": 0, "header": "@@ -9,9 +9,9 @@", "lines": null }] }),
+        )
+        .await;
+    assert_eq!(status_code, StatusCode::BAD_REQUEST);
+    assert!(v["error"].as_str().unwrap().contains("changed since"), "{v}");
+
+    let (status_code, v) = api.post(&format!("/api/repos/{id}/commit"), json!({ "message": "Add line four" })).await;
+    assert_eq!(status_code, StatusCode::OK, "{v}");
+    let new_head = v["oid"].as_str().unwrap().to_string();
+    assert_eq!(v["previous"].as_str().unwrap().len(), 40);
+    let (_, graph) = api.get(&format!("/api/repos/{id}/graph")).await;
+    assert_eq!(graph["rows"][1]["o"], new_head, "the graph shows the new commit without waiting for the file watch");
+
+    // Discard returns the snapshot that can undo it.
+    let (_, v) = api.post(&format!("/api/repos/{id}/discard"), json!({ "paths": ["a.txt", "new.txt"] })).await;
+    let snapshot = v["snapshot"]["name"].as_str().expect("a snapshot name").to_string();
+    assert_eq!(t.read("a.txt"), "one\ntwo\nthree\nfour\n");
+    assert!(!t.path().join("new.txt").exists());
+    let (_, list) = api.get(&format!("/api/repos/{id}/snapshots")).await;
+    assert_eq!(list[0]["name"], snapshot);
+    let (_, v) = api.post(&format!("/api/repos/{id}/snapshots/restore"), json!({ "name": snapshot })).await;
+    assert_eq!(v["files"].as_array().unwrap().len(), 2);
+    assert_eq!(t.read("a.txt"), "ONE\ntwo\nthree\nfour\n");
+    assert_eq!(t.read("new.txt"), "new\n");
+
+    // A failed git command comes back with the command and its output, word for word.
+    if graftline::gitcli::detect().is_some() {
+        api.post(&format!("/api/repos/{id}/discard"), json!({ "paths": ["a.txt", "new.txt"] })).await;
+        let (status_code, v) = api.post(&format!("/api/repos/{id}/commit"), json!({ "message": "nothing here" })).await;
+        assert_eq!(status_code, StatusCode::BAD_REQUEST);
+        assert_eq!(v["command"], "git commit --cleanup=strip -F -");
+        assert!(v["output"].as_str().unwrap().contains("nothing to commit"), "{v}");
+    }
+}
