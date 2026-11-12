@@ -12,7 +12,7 @@ use std::path::Path;
 
 fn op(t: &TestRepo, value: Value) -> anyhow::Result<Value> {
     let op: Op = serde_json::from_value(value).expect("a valid operation");
-    // A fresh handle, as the server opens one per request.
+    // A fresh handle, as the core opens one per call.
     ops::run(&repo::open(&t.root())?, &t.root(), op)
 }
 

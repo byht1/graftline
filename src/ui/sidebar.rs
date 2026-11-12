@@ -96,6 +96,9 @@ pub fn refs_list(tab: &Entity<RepoView>, filter: &str, cx: &mut App) -> AnyEleme
                 .text_color(t.muted)
                 .child(icon(if is_closed { "right" } else { "chevron" }, 12., t.dim))
                 .child(title)
+                .when(key == "local", |el| {
+                    el.tooltip(tip("Double click a branch to check it out.\nDrag a branch onto another one to merge or rebase."))
+                })
                 .child(div().font_weight(FontWeight::NORMAL).text_color(t.dim).child(fmt_num(count)))
                 .on_click(move |_, _, cx| {
                     set_pref(cx, "gl.sbClosed", &closed_next);
@@ -152,10 +155,7 @@ pub fn refs_list(tab: &Entity<RepoView>, filter: &str, cx: &mut App) -> AnyEleme
     // ---- local branches
     let mut items = Vec::new();
     for (i, b) in refs.branches.iter().filter(|b| hit(&b.name)).enumerate() {
-        let title = match &b.upstream {
-            Some(u) => format!("{} → {u}\nDouble click to check out · drag onto another branch to merge or rebase", b.name),
-            None => format!("{}\nDouble click to check out · drag onto another branch to merge or rebase", b.name),
-        };
+        // No tooltip on the row: it would cover the context menu that opens under the pointer.
         let (oid, name, current) = (b.oid.clone(), b.name.clone(), b.current);
         let (n1, n2, n3) = (b.name.clone(), b.name.clone(), b.name.clone());
         let click = on(Box::new(move |this, cx| this.select_oid(&oid, cx)));
@@ -166,7 +166,6 @@ pub fn refs_list(tab: &Entity<RepoView>, filter: &str, cx: &mut App) -> AnyEleme
         }));
         let drop_weak = weak.clone();
         let mut el = row(("sb-branch", i), if b.current { "check" } else { "branch" }, b.name.clone(), false, b.current)
-            .tooltip(tip(title))
             .on_click(move |e, _, cx| if e.click_count() >= 2 { dbl(cx) } else { click(cx) })
             .on_mouse_down(RIGHT, menu(Box::new(move |this, cx| this.branch_items(&n1, cx))))
             .on_drag(DraggedRef { name: n2, kind: "branch" }, |d: &DraggedRef, _, _, cx| cx.new(|_| DragChip(d.name.clone())))
@@ -256,7 +255,6 @@ pub fn refs_list(tab: &Entity<RepoView>, filter: &str, cx: &mut App) -> AnyEleme
             let drop_weak = weak.clone();
             items.push(
                 row(("sb-rbranch", n), "branch", b.name.clone(), true, false)
-                    .tooltip(tip(format!("{}\nDouble click to check out as a local branch", b.full)))
                     .on_click(move |e, _, cx| if e.click_count() >= 2 { dbl(cx) } else { click(cx) })
                     .on_mouse_down(RIGHT, menu(Box::new(move |this, cx| this.remote_branch_items(&f1, cx))))
                     .on_drag(DraggedRef { name: f2, kind: "remote" }, |d: &DraggedRef, _, _, cx| cx.new(|_| DragChip(d.name.clone())))

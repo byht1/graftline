@@ -6,7 +6,7 @@
 //! - Windows, portable `graftline.exe` in a writable folder: the file is swapped.
 //! - macOS: the `.app` bundle is replaced from the dmg.
 //! - Linux, portable tar.gz in a writable folder: the binary is swapped.
-//! - Anything else (a .deb in /usr/bin, the development server): a link to the release page.
+//! - Anything else (a .deb in /usr/bin, a tool or a test): a link to the release page.
 //!
 //! The check is one request to the GitHub API. It sends the app version and nothing about
 //! the user's repositories. It can be turned off in the settings.
@@ -30,7 +30,7 @@ pub enum Method {
     App,
     Tarball,
     Manual,
-    /// The development server: show the news only.
+    /// Not the desktop app (a tool or a test): show the news only.
     None,
 }
 

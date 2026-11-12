@@ -36,6 +36,7 @@ actions!(
         NewBranch,
         Search,
         Refresh,
+        Quit,
     ]
 );
 
@@ -85,6 +86,13 @@ fn load_window_state(path: &Path) -> Option<WindowState> {
 
 pub fn open_window(cx: &mut App, open: Vec<PathBuf>) {
     bind_keys(cx);
+    cx.on_action(|_: &Quit, cx| cx.quit());
+    // macOS: the app menu provides Quit; Cmd+Q is the usual shortcut.
+    #[cfg(target_os = "macos")]
+    {
+        cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
+        cx.set_menus(vec![gpui::Menu { name: APP_NAME.into(), items: vec![gpui::MenuItem::action(format!("Quit {APP_NAME}"), Quit)] }]);
+    }
     let saved = load_window_state(&window_state_file(cx));
     let bounds = match saved {
         Some(s) => {

@@ -1,6 +1,6 @@
 //! Reading a repository in process with libgit2: refs, commit details, diffs.
 //!
-//! Every function takes an open `Repository`. The server opens one per request on a blocking
+//! Every function takes an open `Repository`. The core opens one per call on a blocking
 //! thread; opening is cheap and avoids sharing a handle that is not thread-safe.
 
 use crate::history;

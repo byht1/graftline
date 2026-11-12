@@ -527,7 +527,7 @@ impl RepoView {
             .px_3()
             .border_b_1()
             .border_color(t.border)
-            .child(div().flex().items_center().gap_3().min_w_0().child(title).child(self.render_actions(t, cx)))
+            .child(div().flex().items_center().gap_3().min_w_0().overflow_hidden().child(title).child(self.render_actions(t, cx)))
             .child(
                 div()
                     .flex()
@@ -541,7 +541,11 @@ impl RepoView {
                             .tip("Show the uncommitted changes (Ctrl+Shift+C)")
                             .on_click(cx.listener(|this, _, _, cx| this.show_changes(cx)))
                     }))
-                    .child(div().w(px(250.)).child(field(&self.search, window, cx)))
+                    .child(div().w(px(if f32::from(window.viewport_size().width) < 1500. { 190. } else { 250. })).child(field(
+                        &self.search,
+                        window,
+                        cx,
+                    )))
                     .children(
                         (!self.search_label.is_empty()).then(|| {
                             div().px_1().text_size(px(12.)).text_color(t.muted).whitespace_nowrap().child(self.search_label.clone())

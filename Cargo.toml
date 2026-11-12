@@ -34,6 +34,8 @@ anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 dirs = "6"
 futures = "0.3"
+# GPUI needs xattr 0.2.3 (through its HTTP client). That crate uses libc::ENOATTR, which libc
+# 0.2.191 removed on Linux, so Cargo.lock keeps libc at 0.2.189. Do not run a plain `cargo update`.
 gpui = { version = "0.2.2", optional = true }
 git2 = { version = "0.21.0", default-features = false, features = ["vendored-libgit2"] }
 notify = "8.2.2"
