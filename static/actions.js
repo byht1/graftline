@@ -52,7 +52,7 @@ export function createActions(ctx) {
       running.delete(job.id);
       const done = waiters.get(job.id);
       waiters.delete(job.id);
-      if (job.state === 'done') toast(`${job.title}: done`, 'success');
+      if (job.state === 'done') { if (!quiet.delete(job.id)) toast(`${job.title}: done`, 'success'); }
       else if (job.state === 'cancelled') toast(`${job.title}: cancelled`);
       else showError({ command: job.command, output: job.output || job.line, message: job.output || job.line }, `${job.title} failed`);
       done?.(job.state === 'done');
@@ -62,10 +62,12 @@ export function createActions(ctx) {
   }
 
   /** Starts a network job. Resolves to true when it succeeds. */
-  async function net(payload) {
+  const quiet = new Set(); // jobs that report success silently (automatic fetch)
+  async function net(payload, opts = {}) {
     if (!ctx.hasGit()) { toast('Git was not found on PATH. Install Git to use the network.', 'error'); return false; }
     try {
       const job = await api(`/repos/${id}/job`, { body: payload });
+      if (opts.quiet) quiet.add(job.id);
       running.set(job.id, job);
       drawJobs();
       drawToolbar();
@@ -76,7 +78,7 @@ export function createActions(ctx) {
     }
   }
 
-  const fetchAll = (prune = false) => net({ job: 'fetch', prune });
+  const fetchAll = (prune = false, opts = {}) => net({ job: 'fetch', prune }, opts);
   const pull = (mode = null) => net({ job: 'pull', mode });
 
   async function addRemote() {

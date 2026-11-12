@@ -108,6 +108,7 @@ export function createChanges(ctx) {
         side === 'unstaged' ? { icon: 'plus', label: 'Stage', run: () => stage([f]) } : { icon: 'minus', label: 'Unstage', run: () => unstage([f]) },
         side === 'unstaged' ? { icon: 'undo', label: 'Discard changes…', danger: true, run: () => discard([f]) } : null,
         '-',
+        ...(f.status === '?' ? [] : ctx.fileTools(f.path)),
         { icon: 'copy', label: 'Copy path', run: () => copyText(f.path) },
       ]),
     },

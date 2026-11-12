@@ -2,13 +2,19 @@
 
 import {
   APP_NAME, $, h, fill, icon, env, store, api, qs, toast, copyText, openMenu, closeMenu, menuItems, contextMenu, openModal,
-  currentTheme, openThemeMenu, fmtDate, relTime, fmtNum, avatar, dragResize,
+  currentTheme, openThemeMenu, setTheme, THEMES as THEME_LIST, fmtDate, relTime, fmtNum, avatar, dragResize,
 } from '/ui.js';
 import { createGraphView } from '/graph.js';
 import { createDiffPanel, setHighlighter } from '/diff.js';
 import { createChanges } from '/changes.js';
 import { createActions, openCloneDialog } from '/actions.js';
 import { createHistory } from '/history.js';
+import {
+  settings, applySettings, openSettings, openShortcuts, openPalette, createFileHistory, createBlame,
+  updateState, updateAvailable, checkForUpdates, openUpdateModal,
+} from '/tools.js';
+
+applySettings();
 import { highlightLine } from '/highlight.js';
 
 setHighlighter(highlightLine);
@@ -41,6 +47,14 @@ async function boot() {
   loadRecent();
   render();
   connectEvents();
+  if (state.info.desktop) setTimeout(() => checkForUpdates({ auto: true, onChange: renderSidebar }), 3000);
+  // Automatic fetch of the repository in view, as set in the settings.
+  setInterval(() => {
+    const minutes = settings().autoFetch;
+    const tab = activeTab();
+    if (!minutes || !tab || !state.info.git || !tab.refs?.remotes.length || document.hidden) return;
+    if (Date.now() - (tab.lastFetch || tab.openedAt) >= minutes * 60000) { tab.lastFetch = Date.now(); tab.actions.fetchAll(false, { quiet: true }); }
+  }, 30000);
   // Tabs of the last session, then repositories from the command line.
   const saved = store.get('gl.tabs', []);
   const wanted = store.get('gl.active', null);
@@ -164,6 +178,7 @@ function makeTab({ id, path, name }) {
     refs: null,
     refsError: null,
     filter: '',
+    openedAt: Date.now(),
     detail: null,     // { oid, data } of the commit shown in the detail panel
     diffPanel: null,
     search: { q: '', timer: 0, pos: 0 },
@@ -229,6 +244,7 @@ function makeTab({ id, path, name }) {
     try {
       tab.refs = await api(`/repos/${id}/refs`);
       tab.refsError = null;
+      tab.extras = await api(`/repos/${id}/extras`).catch(() => null);
     } catch (e) {
       tab.refsError = e.message;
     }
@@ -372,11 +388,21 @@ function makeTab({ id, path, name }) {
           f.additions ? h('span', { class: 'stat-add' }, `+${f.additions}`) : null,
           f.deletions ? h('span', { class: 'stat-del' }, `−${f.deletions}`) : null]));
     el.addEventListener('contextmenu', (e) => contextMenu(e, [
+      ...tab.fileTools(f.path, tab.detail?.oid),
+      '-',
       { icon: 'copy', label: 'Copy path', run: () => copyText(f.path) },
       { icon: 'copy', label: 'Copy file name', run: () => copyText(f.path.slice(slash + 1)) },
     ]));
     return el;
   }
+
+  // ---- file history and blame
+  const showPanel = (panel) => { closeDiff(); tab.diffPanel = panel; center.append(panel.el); };
+  const panelClosed = (panel) => { if (tab.diffPanel === panel) tab.diffPanel = null; };
+  tab.fileTools = (path, commit = null) => [
+    { icon: 'history', label: 'File history', run: () => showPanel(createFileHistory({ repoId: id, path, onClose: panelClosed, selectOid: (oid) => tab.selectOid(oid) })) },
+    { icon: 'user', label: commit ? `Blame at ${commit.slice(0, 7)}` : 'Blame', run: () => showPanel(createBlame({ repoId: id, path, commit, onClose: panelClosed, selectOid: (oid) => tab.selectOid(oid) })) },
+  ];
 
   // ---- diff
   function closeDiff() {
@@ -422,6 +448,7 @@ function makeTab({ id, path, name }) {
       tab.history?.drawBanner();
     },
     openConflict: (path) => tab.history.openConflict(path),
+    fileTools: (path) => tab.fileTools(path),
     resolveSide: (path, side) => tab.history.resolveSide(path, side),
   });
 
@@ -552,9 +579,57 @@ function sidebarFooter() {
   const theme = currentTheme();
   return h('div', { class: 'sb-foot' },
     h('span', { class: 'brand' }, h('img', { class: 'brand-mark', src: '/brand/symbol.svg', alt: '' }), h('span', { class: 'brand-name' }, APP_NAME),
-      h('span', { class: 'ver' }, state.info ? `v${state.info.version}` : '')),
-    h('button', { class: 'btn ghost sm', title: 'Theme', onclick: (e) => openThemeMenu(e.currentTarget, renderSidebar) },
-      icon('palette', 14), h('span', { class: 'theme-name' }, theme.name)));
+      h('button', { class: 'ver', title: 'Check for updates', onclick: () => showUpdates() }, state.info ? `v${state.info.version}` : ''),
+      updateAvailable() ? h('button', { class: 'update-pill', title: `${APP_NAME} ${updateState.info.latest} is available`, onclick: () => showUpdates() }, icon('download', 11), 'Update') : null),
+    h('span', { class: 'spacer' }),
+    h('button', { class: 'icon-btn', title: 'Command palette (Ctrl+P)', onclick: () => showPalette() }, icon('search', 14)),
+    h('button', { class: 'icon-btn', title: 'Settings (Ctrl+,)', onclick: () => openSettings() }, icon('settings', 14)),
+    h('button', { class: 'icon-btn', title: `Theme: ${theme.name}`, onclick: (e) => openThemeMenu(e.currentTarget, renderSidebar) }, icon('palette', 14)));
+}
+
+const showUpdates = () => openUpdateModal({ onChange: renderSidebar, version: state.info?.version });
+
+// ---------------------------------------------------------------- command palette
+function showPalette() {
+  const tab = activeTab();
+  const cmds = [];
+  if (tab) {
+    const a = tab.actions;
+    cmds.push(
+      { icon: 'fetch', label: 'Fetch all remotes', hint: 'Ctrl+Shift+F', run: () => a.fetchAll(false) },
+      { icon: 'fetch', label: 'Fetch all remotes and prune', run: () => a.fetchAll(true) },
+      { icon: 'pull', label: 'Pull', hint: 'Ctrl+Shift+L', run: () => a.pull() },
+      { icon: 'pull', label: 'Pull with rebase', run: () => a.pull('rebase') },
+      { icon: 'push', label: 'Push', hint: 'Ctrl+Shift+P', run: () => a.push() },
+      { icon: 'push', label: 'Force push (with lease)', run: () => a.push({ force: true }) },
+      { icon: 'branch', label: 'Create a branch', hint: 'Ctrl+B', run: () => a.createBranch() },
+      { icon: 'tag', label: 'Create a tag', run: () => a.createTag() },
+      { icon: 'stash', label: 'Stash the changes', hint: 'Ctrl+Shift+S', run: () => a.stashSave() },
+      { icon: 'cloud', label: 'Add a remote', run: () => a.addRemote() },
+      { icon: 'edit', label: 'Show the uncommitted changes', hint: 'Ctrl+Shift+C', run: () => tab.showChanges() },
+      { icon: 'search', label: 'Search commits', hint: 'Ctrl+F', run: () => tab.focusSearch() },
+      { icon: 'refresh', label: 'Refresh', hint: 'F5', run: () => tab.refresh(true) },
+      { icon: 'x', label: 'Close this repository', hint: 'Ctrl+W', run: () => closeTab(tab.id) },
+    );
+    for (const b of tab.refs?.branches || []) {
+      if (!b.current) cmds.push({ icon: 'check', label: `Checkout ${b.name}`, sub: 'local branch', run: () => a.checkout(b.name, 'branch') });
+      cmds.push({ icon: 'branch', label: `Go to ${b.name}`, sub: 'show the branch in the graph', run: () => tab.selectOid(b.oid) });
+    }
+    for (const r of tab.refs?.remotes || []) for (const b of r.branches) cmds.push({ icon: 'cloud', label: `Checkout ${b.full}`, sub: 'remote branch, as a local tracking branch', run: () => a.checkout(b.full, 'remote') });
+    for (const t of (tab.refs?.tags || []).slice(0, 200)) cmds.push({ icon: 'tag', label: `Go to tag ${t.name}`, run: () => tab.selectOid(t.oid) });
+  }
+  cmds.push(
+    { icon: 'folder', label: 'Open a repository', hint: 'Ctrl+O', run: pickAndOpen },
+    { icon: 'download', label: 'Clone a repository', run: cloneRepo },
+    { icon: 'home', label: 'Start page', run: () => activate('home') },
+    { icon: 'settings', label: 'Settings', hint: 'Ctrl+,', run: () => openSettings() },
+    { icon: 'keyboard', label: 'Keyboard shortcuts', hint: 'F1', run: openShortcuts },
+    { icon: 'download', label: 'Check for updates', run: showUpdates },
+  );
+  for (const t of state.tabs) if (t.id !== state.active) cmds.push({ icon: 'repo', label: `Switch to ${t.name}`, sub: t.path, run: () => activate(t.id) });
+  for (const r of state.recent.filter((x) => x.exists && !state.tabs.some((t) => t.path === x.path)).slice(0, 15)) cmds.push({ icon: 'repo', label: `Open ${r.name}`, sub: r.path, run: () => openRepo(r.path) });
+  for (const t of THEME_LIST) cmds.push({ icon: 'palette', label: `Theme: ${t.name}`, run: () => { setTheme(t.id); renderSidebar(); } });
+  openPalette(cmds);
 }
 
 function openRepoMenu(anchor) {
@@ -657,6 +732,25 @@ function drawRefs(tab, list) {
     oncontextmenu: (e) => contextMenu(e, act.stashItems(s.index, s.message)),
   }, icon('stash', 14), h('span', { class: 'sb-name' }, s.message || `stash@{${s.index}}`)), 'No stashes', { title: 'Stash the uncommitted changes', run: () => act.stashSave() });
 
+  const extras = tab.extras;
+  if (extras?.submodules.length) {
+    section('submodules', 'Submodules', extras.submodules.filter((m) => hit(m.path)), (m) => h('button', {
+      class: 'sb-item', title: `${m.path}\n${m.url || ''}\n${m.initialized ? 'Click to open as a repository' : 'Not initialized: run git submodule update --init'}`,
+      disabled: !m.initialized, onclick: () => openRepo(m.fullPath),
+      oncontextmenu: (e) => contextMenu(e, [{ icon: 'copy', label: 'Copy path', run: () => copyText(m.path) }, m.url ? { icon: 'copy', label: 'Copy URL', run: () => copyText(m.url) } : null]),
+    }, icon('repo', 14), h('span', { class: 'sb-name' }, m.path),
+    !m.initialized ? h('span', { class: 'sb-track' }, 'not initialized')
+      : m.recorded && m.checkedOut && m.recorded !== m.checkedOut ? h('span', { class: 'sb-track', title: `Checked out ${m.checkedOut.slice(0, 7)}, recorded ${m.recorded.slice(0, 7)}` }, 'modified') : null), 'No submodules');
+  }
+  if (extras?.worktrees.length) {
+    section('worktrees', 'Worktrees', extras.worktrees.filter((w) => hit(w.name)), (w) => h('button', {
+      class: 'sb-item', title: `${w.path}\n${w.missing ? 'The folder no longer exists' : 'Click to open as a repository'}`,
+      disabled: w.missing, onclick: () => openRepo(w.path),
+      oncontextmenu: (e) => contextMenu(e, [{ icon: 'copy', label: 'Copy path', run: () => copyText(w.path) }]),
+    }, icon('folder', 14), h('span', { class: 'sb-name' }, w.name),
+    h('span', { class: 'sb-track' }, w.missing ? 'missing' : w.locked ? 'locked' : w.branch || 'detached')), 'No worktrees');
+  }
+
   fill(list, out);
 }
 
@@ -676,7 +770,18 @@ document.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
   const tab = activeTab();
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
-  if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); pickAndOpen(); }
+  const key = e.key.toLowerCase();
+  const act = tab?.actions;
+  if (mod && !e.shiftKey && (key === 'p' || key === 'k')) { e.preventDefault(); showPalette(); }
+  else if (mod && key === ',') { e.preventDefault(); openSettings(); }
+  else if (e.key === 'F1') { e.preventDefault(); openShortcuts(); }
+  else if (mod && e.shiftKey && key === 'f' && act) { e.preventDefault(); act.fetchAll(false); }
+  else if (mod && e.shiftKey && key === 'l' && act) { e.preventDefault(); act.pull(); }
+  else if (mod && e.shiftKey && key === 'p' && act) { e.preventDefault(); act.push(); }
+  else if (mod && e.shiftKey && key === 's' && act) { e.preventDefault(); act.stashSave(); }
+  else if (mod && e.shiftKey && key === 'c' && tab) { e.preventDefault(); tab.showChanges(); }
+  else if (mod && !e.shiftKey && key === 'b' && act && !typing) { e.preventDefault(); act.createBranch(); }
+  else if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); pickAndOpen(); }
   else if (mod && e.key.toLowerCase() === 'w') { e.preventDefault(); if (tab) closeTab(tab.id); }
   else if (mod && e.key.toLowerCase() === 'f' && tab) { e.preventDefault(); tab.focusSearch(); }
   else if (e.key === 'F5' && tab) { e.preventDefault(); tab.refresh(true); }

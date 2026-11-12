@@ -1,6 +1,7 @@
 //! Graftline: a desktop Git client (local server + embedded web UI).
 
 pub mod conflicts;
+pub mod extras;
 pub mod gitcli;
 pub mod graph;
 pub mod history;
@@ -11,6 +12,7 @@ pub mod repo;
 pub mod rewrite;
 pub mod safety;
 pub mod session;
+pub mod update;
 pub mod watch;
 pub mod worktree;
 
@@ -73,6 +75,7 @@ pub struct AppState {
     pub events: broadcast::Sender<String>,
     git: Option<gitcli::GitInfo>,
     jobs: Arc<jobs::Jobs>,
+    updater: Arc<update::Updater>,
     /// Repositories given on the command line; the UI opens them once.
     startup: RwLock<Vec<String>>,
 }
@@ -166,6 +169,7 @@ assets! {
     "changes.js" => "text/javascript; charset=utf-8",
     "actions.js" => "text/javascript; charset=utf-8",
     "history.js" => "text/javascript; charset=utf-8",
+    "tools.js" => "text/javascript; charset=utf-8",
     "highlight.js" => "text/javascript; charset=utf-8",
     "favicon.svg" => "image/svg+xml",
     "brand/symbol.svg" => "image/svg+xml",
@@ -493,6 +497,63 @@ async fn restore_snapshot(State(st): State<Shared>, Path(id): Path<String>, Json
     Ok(Json(json!({ "files": files })))
 }
 
+// ---------- handlers: file history, blame, submodules, worktrees ----------
+
+#[derive(Deserialize)]
+struct FileQuery {
+    path: String,
+    commit: Option<String>,
+}
+
+async fn file_history(State(st): State<Shared>, Path(id): Path<String>, Query(q): Query<FileQuery>) -> ApiResult<Json<Value>> {
+    let (commits, more) = st.with_repo(&id, move |r| extras::file_history(r, &q.path, 500)).await?;
+    Ok(Json(json!({ "commits": commits, "more": more })))
+}
+
+async fn blame(State(st): State<Shared>, Path(id): Path<String>, Query(q): Query<FileQuery>) -> ApiResult<Json<extras::Blame>> {
+    Ok(Json(st.with_repo(&id, move |r| extras::blame(r, &q.path, q.commit.as_deref())).await?))
+}
+
+async fn get_extras(State(st): State<Shared>, Path(id): Path<String>) -> ApiResult<Json<extras::Extras>> {
+    Ok(Json(st.with_repo(&id, extras::extras).await?))
+}
+
+// ---------- handlers: updates ----------
+
+#[derive(Deserialize)]
+struct CheckQuery {
+    #[serde(default)]
+    force: Option<String>,
+}
+
+async fn update_check(State(st): State<Shared>, Query(q): Query<CheckQuery>) -> ApiResult<Json<Value>> {
+    let force = q.force.is_some_and(|v| v != "0" && v != "false");
+    Ok(Json(st.updater.check(force).await?))
+}
+
+async fn update_download(State(st): State<Shared>) -> ApiResult<Json<Value>> {
+    st.updater.download().await?;
+    Ok(Json(json!(st.updater.progress().await)))
+}
+
+async fn update_progress(State(st): State<Shared>) -> Json<Value> {
+    Json(json!(st.updater.progress().await))
+}
+
+/// Desktop: hands over to the updater and exits; the new version starts by itself.
+async fn update_restart(State(st): State<Shared>) -> ApiResult<Json<Value>> {
+    if st.app_token.is_none() {
+        return Err(not_found("Endpoint"));
+    }
+    st.updater.restart().await?;
+    tracing::info!("exiting for the update");
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        std::process::exit(0);
+    });
+    Ok(Json(json!({ "ok": true })))
+}
+
 // ---------- handlers: operations and jobs ----------
 
 async fn run_op(State(st): State<Shared>, Path(id): Path<String>, Json(op): Json<ops::Op>) -> ApiResult<Json<Value>> {
@@ -653,6 +714,7 @@ pub fn router(opts: Options) -> (Router, Shared) {
     let (events, _) = broadcast::channel(256);
     let recent: Vec<Recent> =
         std::fs::read_to_string(opts.data_dir.join("recent.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let updater = update::Updater::new(opts.app_token.is_some(), opts.data_dir.clone());
     let state: Shared = Arc::new(AppState {
         prefs: RwLock::new(prefs::load(&prefs::store_path(&opts.data_dir))),
         data_dir: opts.data_dir,
@@ -660,6 +722,7 @@ pub fn router(opts: Options) -> (Router, Shared) {
         sessions: RwLock::new(HashMap::new()),
         recent: RwLock::new(recent),
         jobs: jobs::Jobs::new(events.clone()),
+        updater,
         events,
         git: gitcli::detect(),
         startup: RwLock::new(opts.open.iter().map(|p| p.display().to_string()).collect()),
@@ -690,6 +753,13 @@ pub fn router(opts: Options) -> (Router, Shared) {
         .route("/repos/{id}/snapshots", get(list_snapshots))
         .route("/repos/{id}/snapshots/restore", post(restore_snapshot))
         .route("/repos/{id}/snapshots/drop", post(drop_snapshot))
+        .route("/repos/{id}/file-history", get(file_history))
+        .route("/repos/{id}/blame", get(blame))
+        .route("/repos/{id}/extras", get(get_extras))
+        .route("/update/check", get(update_check))
+        .route("/update/download", post(update_download))
+        .route("/update/progress", get(update_progress))
+        .route("/update/restart", post(update_restart))
         .route("/repos/{id}/op", post(run_op))
         .route("/repos/{id}/history", post(run_history))
         .route("/repos/{id}/rebase-plan", get(rebase_plan))
