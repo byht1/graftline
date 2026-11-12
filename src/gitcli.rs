@@ -86,10 +86,18 @@ pub fn display(args: &[&str]) -> String {
 /// Runs `git <args>` in `root` and waits for it. `stdin` is written to the process when given.
 /// Returns stdout. A missing executable or a non-zero exit code is a [`GitError`].
 pub fn run(root: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<String, GitError> {
+    run_env(root, args, stdin, &[])
+}
+
+/// Like [`run`], with extra environment variables for the git process.
+pub fn run_env(root: &Path, args: &[&str], stdin: Option<&[u8]>, env: &[(&str, &str)]) -> Result<String, GitError> {
     let command = display(args);
     let fail = |code: Option<i32>, output: String| GitError { command: command.clone(), code, output };
     let mut cmd = self::command();
     cmd.current_dir(root).args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
     if stdin.is_some() {
         cmd.stdin(Stdio::piped());
     }
@@ -121,9 +129,59 @@ pub fn run(root: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<String, G
     Err(fail(out.status.code(), text))
 }
 
+/// Quotes a path for the POSIX shell that git uses to run editors and `exec` lines, also on
+/// Windows. Backslashes become slashes there: the shell reads a backslash as an escape.
+pub fn shell_quote(path: &Path) -> String {
+    let text = path.display().to_string();
+    let text = if cfg!(windows) { text.replace('\\', "/") } else { text };
+    format!("'{}'", text.replace('\'', "'\\''"))
+}
+
+/// The argument that makes this executable copy a prepared file over the file git passes.
+pub const APPLY_TODO: &str = "--apply-todo";
+
+/// When the process was started by git as the sequence editor of an interactive rebase
+/// (`<exe> --apply-todo <prepared> <git's todo file>`), copies the prepared todo list over
+/// git's file and returns the exit code. Returns `None` in a normal start.
+/// Both binaries call this first in `main`.
+pub fn run_as_editor() -> Option<i32> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) != Some(APPLY_TODO) {
+        return None;
+    }
+    let (Some(prepared), Some(target)) = (args.get(2), args.get(3)) else {
+        eprintln!("usage: {APPLY_TODO} <prepared file> <target file>");
+        return Some(2);
+    };
+    match std::fs::copy(prepared, target) {
+        Ok(_) => Some(0),
+        Err(e) => {
+            eprintln!("cannot write {target}: {e}");
+            Some(1)
+        }
+    }
+}
+
+/// The executable that serves as sequence editor: this program, or the one named in
+/// `GRAFTLINE_EDITOR_EXE` (tests point it at a built binary).
+pub fn editor_exe() -> std::io::Result<std::path::PathBuf> {
+    match std::env::var_os("GRAFTLINE_EDITOR_EXE") {
+        Some(p) => Ok(p.into()),
+        None => std::env::current_exe(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_quote_handles_quotes_and_spaces() {
+        assert_eq!(shell_quote(Path::new("/tmp/it's here/todo")), "'/tmp/it'\\''s here/todo'");
+        if cfg!(windows) {
+            assert_eq!(shell_quote(Path::new(r"C:\Program Files\App\app.exe")), "'C:/Program Files/App/app.exe'");
+        }
+    }
 
     #[test]
     fn display_quotes_arguments_with_spaces() {

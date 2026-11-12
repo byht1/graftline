@@ -73,6 +73,10 @@ fn bench(path: &std::path::Path) -> anyhow::Result<()> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // git starts this program as the editor of an interactive rebase.
+    if let Some(code) = graftline::gitcli::run_as_editor() {
+        std::process::exit(code);
+    }
     let cli = Cli::parse();
     if let Some(path) = &cli.bench {
         return bench(path);

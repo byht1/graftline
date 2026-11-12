@@ -1,5 +1,6 @@
 //! Graftline: a desktop Git client (local server + embedded web UI).
 
+pub mod conflicts;
 pub mod gitcli;
 pub mod graph;
 pub mod history;
@@ -7,6 +8,7 @@ pub mod jobs;
 pub mod ops;
 pub mod prefs;
 pub mod repo;
+pub mod rewrite;
 pub mod safety;
 pub mod session;
 pub mod watch;
@@ -163,6 +165,7 @@ assets! {
     "diff.js" => "text/javascript; charset=utf-8",
     "changes.js" => "text/javascript; charset=utf-8",
     "actions.js" => "text/javascript; charset=utf-8",
+    "history.js" => "text/javascript; charset=utf-8",
     "highlight.js" => "text/javascript; charset=utf-8",
     "favicon.svg" => "image/svg+xml",
     "brand/symbol.svg" => "image/svg+xml",
@@ -496,6 +499,69 @@ async fn run_op(State(st): State<Shared>, Path(id): Path<String>, Json(op): Json
     Ok(Json(mutate(&st, &id, move |r, s| ops::run(r, &s.root, op)).await?))
 }
 
+async fn run_history(State(st): State<Shared>, Path(id): Path<String>, Json(op): Json<rewrite::HistoryOp>) -> ApiResult<Json<Value>> {
+    if st.git.is_none() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Git was not found on PATH. Install Git (https://git-scm.com/downloads) and restart the app.",
+        ));
+    }
+    Ok(Json(mutate(&st, &id, move |r, s| rewrite::run(r, &s.root, op)).await?))
+}
+
+#[derive(Deserialize)]
+struct PlanQuery {
+    /// The commit below the range; the whole history when absent.
+    base: Option<String>,
+}
+
+async fn rebase_plan(
+    State(st): State<Shared>,
+    Path(id): Path<String>,
+    Query(q): Query<PlanQuery>,
+) -> ApiResult<Json<Vec<rewrite::PlanCommit>>> {
+    Ok(Json(st.with_repo(&id, move |r| rewrite::rebase_plan(r, q.base.as_deref())).await?))
+}
+
+#[derive(Deserialize)]
+struct RebaseInfoQuery {
+    branch: Option<String>,
+    onto: String,
+}
+
+async fn rebase_info(State(st): State<Shared>, Path(id): Path<String>, Query(q): Query<RebaseInfoQuery>) -> ApiResult<Json<Value>> {
+    Ok(Json(st.with_repo(&id, move |r| rewrite::rebase_info(r, q.branch.as_deref(), &q.onto)).await?))
+}
+
+async fn list_conflicts(State(st): State<Shared>, Path(id): Path<String>) -> ApiResult<Json<Vec<conflicts::ConflictFile>>> {
+    Ok(Json(st.with_repo(&id, conflicts::list).await?))
+}
+
+#[derive(Deserialize)]
+struct PathQuery {
+    path: String,
+}
+
+async fn get_conflict(
+    State(st): State<Shared>,
+    Path(id): Path<String>,
+    Query(q): Query<PathQuery>,
+) -> ApiResult<Json<conflicts::ConflictDetail>> {
+    Ok(Json(st.with_repo(&id, move |r| conflicts::detail(r, &q.path)).await?))
+}
+
+#[derive(Deserialize)]
+struct ResolveBody {
+    path: String,
+    #[serde(flatten)]
+    choice: conflicts::Choice,
+}
+
+async fn resolve_conflict(State(st): State<Shared>, Path(id): Path<String>, Json(req): Json<ResolveBody>) -> ApiResult<Json<Value>> {
+    let snapshot = mutate(&st, &id, move |r, _| conflicts::resolve(r, &req.path, req.choice)).await?;
+    Ok(Json(json!({ "snapshot": snapshot })))
+}
+
 /// Starts a network operation. The answer comes at once; progress and the result arrive
 /// as `job` events.
 async fn start_job(State(st): State<Shared>, Path(id): Path<String>, Json(job): Json<ops::NetJob>) -> ApiResult<Json<jobs::JobInfo>> {
@@ -625,6 +691,12 @@ pub fn router(opts: Options) -> (Router, Shared) {
         .route("/repos/{id}/snapshots/restore", post(restore_snapshot))
         .route("/repos/{id}/snapshots/drop", post(drop_snapshot))
         .route("/repos/{id}/op", post(run_op))
+        .route("/repos/{id}/history", post(run_history))
+        .route("/repos/{id}/rebase-plan", get(rebase_plan))
+        .route("/repos/{id}/rebase-info", get(rebase_info))
+        .route("/repos/{id}/conflicts", get(list_conflicts))
+        .route("/repos/{id}/conflict", get(get_conflict))
+        .route("/repos/{id}/resolve", post(resolve_conflict))
         .route("/repos/{id}/job", post(start_job))
         .route("/clone", post(clone_repo))
         .route("/jobs", get(list_jobs))

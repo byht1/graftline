@@ -8,6 +8,7 @@ import { createGraphView } from '/graph.js';
 import { createDiffPanel, setHighlighter } from '/diff.js';
 import { createChanges } from '/changes.js';
 import { createActions, openCloneDialog } from '/actions.js';
+import { createHistory } from '/history.js';
 import { highlightLine } from '/highlight.js';
 
 setHighlighter(highlightLine);
@@ -177,7 +178,7 @@ function makeTab({ id, path, name }) {
   const prevBtn = h('button', { class: 'icon-btn', title: 'Previous match (Shift+Enter)', disabled: true, onclick: () => step(-1) }, icon('up'));
   const nextBtn = h('button', { class: 'icon-btn', title: 'Next match (Enter)', disabled: true, onclick: () => step(1) }, icon('down'));
   const noticeEl = h('div', { class: 'notice', hidden: true });
-  const changesBtn = h('button', { class: 'btn', hidden: true, title: 'Show the uncommitted changes', onclick: () => tab.graph.selectRow(0, { reveal: true }) });
+  const changesBtn = h('button', { class: 'btn', hidden: true, title: 'Show the uncommitted changes', onclick: () => tab.showChanges() });
   const resizer = h('div', { class: 'pane-resizer' });
   const actionsHost = h('div', { class: 'tb-group' });
   tab.actionsCtx = { repoId: id, getRefs: () => tab.refs, hasGit: () => !!state.info?.git, history: null };
@@ -233,6 +234,7 @@ function makeTab({ id, path, name }) {
     }
     drawTitle();
     tab.actions.drawToolbar();
+    tab.history?.drawBanner();
     if (state.active === id) { renderSidebar(); document.title = `${tab.name} — ${APP_NAME}`; }
   }
 
@@ -399,6 +401,13 @@ function makeTab({ id, path, name }) {
   }
   tab.closeDiff = () => { const open = !!tab.diffPanel; closeDiff(); return open; };
 
+  // Selects the working-tree row. The graph may not have that row yet right after an
+  // operation, so it is reloaded first.
+  tab.showChanges = async () => {
+    if (!tab.graph.hasWip) await tab.graph.reload().catch(() => {});
+    if (tab.graph.hasWip) tab.graph.selectRow(0, { reveal: true });
+  };
+
   // ---- working tree
   tab.changes = createChanges({
     repoId: id,
@@ -410,8 +419,24 @@ function makeTab({ id, path, name }) {
       const n = s ? s.staged.length + s.unstaged.length : 0;
       changesBtn.hidden = !n;
       fill(changesBtn, icon('edit', 14), 'Changes', h('span', { class: 'count' }, fmtNum(n)));
+      tab.history?.drawBanner();
     },
+    openConflict: (path) => tab.history.openConflict(path),
+    resolveSide: (path, side) => tab.history.resolveSide(path, side),
   });
+
+  // ---- history changes and conflicts
+  tab.history = createHistory({
+    repoId: id,
+    getRefs: () => tab.refs,
+    getStatus: () => tab.changes.status,
+    actions: tab.actions,
+    banner: noticeEl,
+    showPanel: (panel) => { closeDiff(); tab.diffPanel = panel; center.append(panel.el); },
+    panelClosed: (panel) => { if (tab.diffPanel === panel) tab.diffPanel = null; },
+    showChanges: () => tab.showChanges(),
+  });
+  tab.actionsCtx.history = tab.history;
   tab.changes.reload();
 
   tab.selectOid = async (oid) => {

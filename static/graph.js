@@ -459,6 +459,8 @@ export function createGraphView({ repoId, onSelect, onContext }) {
     el: root, init, reload, selectOid, selectRow, setMatches, gotoMatch, destroy,
     focus: () => root.focus({ preventScroll: true }),
     get total() { return st.total; },
+    /** True when the first row is the working-tree row. */
+    get hasWip() { return rowData(0)?.k === 'wip'; },
     get selected() { return st.selected; },
     get matchCount() { return st.matchList.length; },
     redraw: schedule,

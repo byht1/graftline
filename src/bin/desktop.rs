@@ -250,6 +250,10 @@ impl App {
 }
 
 fn main() -> anyhow::Result<()> {
+    // git starts this program as the editor of an interactive rebase.
+    if let Some(code) = graftline::gitcli::run_as_editor() {
+        std::process::exit(code);
+    }
     let cli = Cli::parse();
     let data_dir = cli.data_dir.clone().unwrap_or_else(default_data_dir);
     init_logging(&data_dir);

@@ -90,14 +90,19 @@ export function createChanges(ctx) {
   function fileRow(f, side) {
     const slash = f.path.lastIndexOf('/');
     const active = st.open && st.open.path === f.path && st.open.side === side;
-    const actions = side === 'unstaged'
+    const conflict = f.status === 'U';
+    const actions = conflict
+      ? [h('button', { class: 'btn sm', title: 'Use our version of the whole file', onclick: (e) => { e.stopPropagation(); ctx.resolveSide(f.path, 'ours'); } }, 'Ours'),
+        h('button', { class: 'btn sm', title: 'Use their version of the whole file', onclick: (e) => { e.stopPropagation(); ctx.resolveSide(f.path, 'theirs'); } }, 'Theirs'),
+        h('button', { class: 'icon-btn', title: 'Mark as resolved: stage the file as it is', onclick: (e) => { e.stopPropagation(); stage([f]); } }, icon('check', 14))]
+      : side === 'unstaged'
       ? [h('button', { class: 'icon-btn danger', title: 'Discard changes', onclick: (e) => { e.stopPropagation(); discard([f]); } }, icon('undo', 13)),
         h('button', { class: 'icon-btn', title: 'Stage', onclick: (e) => { e.stopPropagation(); stage([f]); } }, icon('plus', 14))]
       : [h('button', { class: 'icon-btn', title: 'Unstage', onclick: (e) => { e.stopPropagation(); unstage([f]); } }, icon('minus', 14))];
     return h('div', {
       class: `file${active ? ' active' : ''}`, role: 'button', tabindex: '0', title: f.oldPath ? `${f.oldPath} → ${f.path}` : f.path,
-      onclick: () => openFile(f, side),
-      ondblclick: () => (side === 'unstaged' ? stage([f]) : unstage([f])),
+      onclick: () => (conflict ? ctx.openConflict(f.path) : openFile(f, side)),
+      ondblclick: () => { if (!conflict) (side === 'unstaged' ? stage : unstage)([f]); },
       onkeydown: (e) => { if (e.key === 'Enter') openFile(f, side); if (e.key === ' ') { e.preventDefault(); (side === 'unstaged' ? stage : unstage)([f]); } },
       oncontextmenu: (e) => contextMenu(e, [
         side === 'unstaged' ? { icon: 'plus', label: 'Stage', run: () => stage([f]) } : { icon: 'minus', label: 'Unstage', run: () => unstage([f]) },
@@ -106,7 +111,7 @@ export function createChanges(ctx) {
         { icon: 'copy', label: 'Copy path', run: () => copyText(f.path) },
       ]),
     },
-    h('span', { class: `st ${f.status === '?' ? 'q' : f.status}`, title: STATUS_NAME[f.status] || '' }, f.status),
+    h('span', { class: `st ${f.status === '?' ? 'q' : f.status}`, title: conflict ? 'Conflict: click to resolve' : STATUS_NAME[f.status] || '' }, f.status),
     h('span', { class: 'file-path' }, h('bdi', {}, slash >= 0 ? h('span', { class: 'file-dir' }, f.path.slice(0, slash + 1)) : null, f.path.slice(slash + 1))),
     h('span', { class: 'file-actions' }, actions));
   }
