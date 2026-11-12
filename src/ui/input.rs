@@ -41,6 +41,8 @@ actions!(
         Enter,
         ShiftEnter,
         Submit,
+        FocusNext,
+        FocusPrev,
     ]
 );
 
@@ -76,6 +78,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("enter", Enter, c),
         KeyBinding::new("shift-enter", ShiftEnter, c),
         KeyBinding::new("secondary-enter", Submit, c),
+        KeyBinding::new("tab", FocusNext, c),
+        KeyBinding::new("shift-tab", FocusPrev, c),
     ]);
 }
 
@@ -122,7 +126,8 @@ impl Focusable for TextInput {
 impl TextInput {
     pub fn new(cx: &mut Context<Self>) -> Self {
         TextInput {
-            focus: cx.focus_handle(),
+            // Tab moves between the text fields of the window.
+            focus: cx.focus_handle().tab_index(0).tab_stop(true),
             content: String::new(),
             placeholder: SharedString::default(),
             multiline: false,
@@ -737,6 +742,8 @@ impl Render for TextInput {
                 }
             }))
             .on_action(cx.listener(|_, _: &Submit, _, cx| cx.emit(InputEvent::Submit)))
+            .on_action(|_: &FocusNext, window, _| window.focus_next())
+            .on_action(|_: &FocusPrev, window, _| window.focus_prev())
             .on_action(cx.listener(move |this, _: &Enter, _, cx| {
                 if this.multiline {
                     this.edit(this.sel.clone(), "\n", cx);

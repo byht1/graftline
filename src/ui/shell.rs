@@ -938,8 +938,9 @@ impl Shell {
                     } else {
                         row = row.cursor_pointer().hover(|s| s.bg(t.hover)).on_click(cx.listener(move |this, _, window, cx| {
                             this.close_menu(true, cx);
-                            if let Some(run) = &run {
-                                run(window, cx);
+                            // The action may change the shell itself, so it runs after this update.
+                            if let Some(run) = run.clone() {
+                                window.defer(cx, move |window, cx| run(window, cx));
                             }
                         }));
                         if let Some(hover) = hover {
@@ -998,7 +999,8 @@ impl Shell {
                         btn(("toast-act", id as usize), label).on_click(cx.listener(move |this, _, window, cx| {
                             this.toasts.retain(|t| t.id != id);
                             cx.notify();
-                            run(window, cx);
+                            let run = run.clone();
+                            window.defer(cx, move |window, cx| run(window, cx));
                         }))
                     }))
                     .child(icon_btn(("toast-x", id as usize), "x").icon_size(12.).on_click(cx.listener(move |this, _, _, cx| {

@@ -6,7 +6,6 @@ use super::graph_view::DraggedRef;
 use super::input::{field, InputEvent, TextInput};
 use super::overlay::{self, close_modal, modal_frame, ConfirmOpts, Field, FormOpts, MenuItem, Para, ToastKind, Values};
 use super::repo_view::RepoView;
-use super::shell::Shell;
 use super::theme::{theme, Theme};
 use super::widgets::{btn, clip, icon, icon_btn, tip};
 use super::{call, core, pref, set_pref};
@@ -1009,7 +1008,6 @@ struct CloneDialog {
     target: Option<String>,
     percent: Option<u8>,
     focus: FocusHandle,
-    shell: WeakEntity<Shell>,
 }
 
 impl Focusable for CloneDialog {
@@ -1049,7 +1047,8 @@ impl CloneDialog {
             Some("done") => {
                 self.job = None;
                 if let Some(path) = self.target.take() {
-                    let _ = self.shell.update(cx, |shell, cx| shell.open_repo(path, true, false, cx));
+                    // The shell is in the middle of handling this event: open the tab after it.
+                    overlay::with_shell(cx, move |shell, _, cx| shell.open_repo(path, true, false, cx));
                 }
                 overlay::success(cx, "Clone finished");
                 close_modal(cx);
@@ -1153,8 +1152,6 @@ pub fn open_clone_dialog(cx: &mut App) {
         return;
     }
     let default_parent: String = pref(cx, "gl.cloneDir").unwrap_or_default();
-    let shell = cx.try_global::<overlay::ShellRef>().map(|r| r.shell.clone());
-    let Some(shell) = shell else { return };
     overlay::open_modal(cx, move |window, cx: &mut Context<CloneDialog>| {
         let url = cx.new(|cx| TextInput::new(cx).placeholder("https://example.com/team/project.git"));
         let parent = cx.new(|cx| TextInput::new(cx).placeholder("Folder that receives the new repository").with_text(default_parent));
@@ -1186,7 +1183,7 @@ pub fn open_clone_dialog(cx: &mut App) {
             }
         })
         .detach();
-        CloneDialog { url, parent, name, status: None, job: None, target: None, percent: None, focus: cx.focus_handle(), shell }
+        CloneDialog { url, parent, name, status: None, job: None, target: None, percent: None, focus: cx.focus_handle() }
     });
 }
 

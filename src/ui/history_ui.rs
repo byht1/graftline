@@ -685,7 +685,6 @@ impl RepoView {
         let (p1, p2) = (path.clone(), path.clone());
         let mut head_items = vec![
             title(d.kind.replace('-', " ")).into_any_element(),
-            div().flex_none().text_color(t.muted).text_size(px(12.)).child(info).into_any_element(),
             btn("cf-ours", if d.kind == "deleted-by-us" { "Keep deleted" } else { "Use ours" })
                 .tip(format!("Use our version of the whole file: {}", d.ours_label))
                 .on_click(cx.listener(move |this, _, _, cx| this.resolve_side(p1.clone(), "ours", cx)))
@@ -724,6 +723,9 @@ impl RepoView {
                 .children(lines.into_iter().map(|l| div().min_h(px(18.)).whitespace_nowrap().child(SharedString::from(l))))
         };
         let mut body = div().flex().flex_col();
+        if !info.is_empty() && manual.is_none() {
+            body = body.child(div().px_3().pt_2().text_size(px(12.)).text_color(t.muted).child(info.clone()));
+        }
         if let Some(input) = &manual {
             body = body
                 .child(
@@ -735,7 +737,11 @@ impl RepoView {
                         .py_2()
                         .text_size(px(12.))
                         .text_color(t.muted)
-                        .child("You edit the result by hand.")
+                        .child(if info.contains("markers") {
+                            "You edit the result by hand. The text still has conflict markers."
+                        } else {
+                            "You edit the result by hand."
+                        })
                         .children((total > 0).then(|| {
                             div()
                                 .id("cf-back")

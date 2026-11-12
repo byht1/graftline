@@ -321,6 +321,7 @@ impl Render for PaletteDialog {
                                 .flex()
                                 .items_center()
                                 .gap_2()
+                                .w_full()
                                 .h(px(36.))
                                 .px_3()
                                 .cursor_pointer()

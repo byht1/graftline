@@ -29,7 +29,8 @@ pub fn start(window: &mut Window, cx: &mut Context<Shell>) {
             if lines.len() < done {
                 done = 0;
             }
-            let Some(line) = lines.get(done).map(|l| l.trim().to_string()) else { continue };
+            // A byte order mark can precede the first line.
+            let Some(line) = lines.get(done).map(|l| l.trim().trim_start_matches('\u{feff}').to_string()) else { continue };
             // The last line is run only when it ends with a line break (it is complete).
             if done + 1 == lines.len() && !text.ends_with('\n') {
                 continue;
