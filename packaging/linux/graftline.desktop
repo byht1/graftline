@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Graftline
+GenericName=Git client
+Comment=Git client built around the commit graph
+Exec=graftline %f
+Icon=graftline
+Terminal=false
+Categories=Development;RevisionControl;
+MimeType=inode/directory;
+Keywords=git;commit;branch;merge;rebase;diff;
+StartupWMClass=graftline

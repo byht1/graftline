@@ -5,6 +5,8 @@ edition = "2021"
 description = "Graftline: a fast desktop Git client built around the commit graph"
 license = "MIT"
 default-run = "graftline"
+repository = "https://github.com/byht1/graftline"
+homepage = "https://byht1.github.io/graftline/"
 readme = "README.md"
 keywords = ["git", "gui", "commit-graph", "desktop"]
 

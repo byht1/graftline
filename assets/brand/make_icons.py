@@ -53,4 +53,12 @@ if __name__ == "__main__":
     render(512).save("docs/assets/icon-512.png")
     render(180).save("docs/assets/apple-touch-icon.png")
     render(48).save("docs/assets/favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)])
+    # Installer bitmaps (WiX): a 493x58 banner and a 493x312 dialog background.
+    banner = Image.new("RGB", (493, 58), (255, 255, 255))
+    banner.paste(render(44), (493 - 44 - 8, 7), render(44))
+    banner.save("packaging/windows/banner.bmp")
+    dialog = Image.new("RGB", (493, 312), (255, 255, 255))
+    ImageDraw.Draw(dialog).rectangle([0, 0, 163, 311], fill=BG[:3])
+    dialog.paste(render(96), (34, 60), render(96))
+    dialog.save("packaging/windows/dialog.bmp")
     print("icons written")

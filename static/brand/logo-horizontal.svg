@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 112" fill="none">
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M38 22v66" stroke="#14B8A6" stroke-width="10"/>
+    <path d="M76 26v12c0 22-38 16-38 40" stroke="#F59E0B" stroke-width="10"/>
+    <circle cx="38" cy="22" r="10" fill="#14B8A6"/>
+    <circle cx="38" cy="88" r="10" fill="#14B8A6"/>
+    <circle cx="76" cy="26" r="10" fill="#F59E0B"/>
+  </g>
+  <text x="112" y="66" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="56" font-weight="700" letter-spacing="-1.6" fill="#10201D">Graftline</text>
+  <text x="115" y="94" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="15.5" font-weight="500" letter-spacing="0.4" fill="#55675F">See the history · Shape it safely</text>
+</svg>

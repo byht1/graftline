@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Graftline MSI installer (WiX Toolset 5).
+  Build: packaging/windows/build-msi.ps1 (needs the WiX 5 dotnet tool, see that script)
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="Graftline"
+           Manufacturer="Graftline"
+           Version="$(var.Version)"
+           UpgradeCode="A0182D07-FC3E-435E-A37F-13D67146EF60"
+           Scope="perMachine"
+           Language="1033">
+
+    <SummaryInformation Description="Graftline — Git client" Manufacturer="Graftline" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Graftline is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- Add/Remove Programs -->
+    <Icon Id="AppIcon" SourceFile="$(var.Root)\assets\graftline.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://byht1.github.io/graftline/" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/byht1/graftline/issues" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/byht1/graftline/releases" />
+
+    <!-- Folders -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Graftline" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!-- Program -->
+    <Component Id="MainExe" Directory="INSTALLFOLDER" Bitness="always64">
+      <File Id="GraftlineExe" Source="$(var.Root)\target\release\graftline.exe" KeyPath="yes" />
+      <!-- The in-app updater uses this value to recognize an MSI install. -->
+      <RegistryValue Root="HKLM" Key="Software\Graftline" Name="InstallDir" Value="[INSTALLFOLDER]" Type="string" />
+    </Component>
+
+    <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder" Bitness="always64">
+      <Shortcut Id="StartMenuShortcut" Name="Graftline" Description="Git client"
+                Target="[INSTALLFOLDER]graftline.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
+      <RegistryValue Root="HKCU" Key="Software\Graftline" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Bitness="always64">
+      <Shortcut Id="DesktopShortcut" Name="Graftline" Description="Git client"
+                Target="[INSTALLFOLDER]graftline.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
+      <RegistryValue Root="HKCU" Key="Software\Graftline" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <!-- "Open in Graftline" in the Explorer menu of a folder and of a folder's background. -->
+    <Component Id="FolderMenu" Directory="INSTALLFOLDER" Bitness="always64">
+      <RegistryValue Root="HKLM" Key="Software\Classes\Directory\shell\Graftline" Value="Open in Graftline" Type="string" KeyPath="yes" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\Directory\shell\Graftline" Name="Icon" Value="&quot;[INSTALLFOLDER]graftline.exe&quot;,0" Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\Directory\shell\Graftline\command" Value="&quot;[INSTALLFOLDER]graftline.exe&quot; &quot;%1&quot;" Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Graftline" Value="Open in Graftline" Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Graftline" Name="Icon" Value="&quot;[INSTALLFOLDER]graftline.exe&quot;,0" Type="string" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Graftline\command" Value="&quot;[INSTALLFOLDER]graftline.exe&quot; &quot;%V&quot;" Type="string" />
+    </Component>
+
+    <!-- Features (shown in the "Custom Setup" page) -->
+    <Feature Id="Main" Title="Graftline" Description="The desktop app and its Start menu shortcut." Level="1"
+             AllowAbsent="no" ConfigurableDirectory="INSTALLFOLDER" Display="expand">
+      <ComponentRef Id="MainExe" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <Feature Id="Desktop" Title="Desktop shortcut" Description="A Graftline shortcut on the desktop." Level="1">
+        <ComponentRef Id="DesktopShortcut" />
+      </Feature>
+      <Feature Id="FolderMenuFeature" Title="“Open in Graftline” for folders"
+               Description="Adds “Open in Graftline” to the right-click menu of folders in Explorer." Level="1">
+        <ComponentRef Id="FolderMenu" />
+      </Feature>
+    </Feature>
+
+    <!-- UI: Welcome → License → Custom setup → Where Graftline keeps its files → Install → Finish -->
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.Root)\packaging\windows\license.rtf" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.Root)\packaging\windows\banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.Root)\packaging\windows\dialog.bmp" />
+
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Graftline" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <!-- SetProperty (not Property) so that [AppDataFolder] is expanded to the real path. -->
+    <SetProperty Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Your settings are stored in [AppDataFolder]graftline. Uninstalling Graftline keeps them. Your repositories are never touched by the installer." After="CostFinalize" Sequence="ui" />
+    <!-- Starts the app from the Finish page as the signed-in user (not elevated). -->
+    <CustomAction Id="LaunchGraftline" Directory="INSTALLFOLDER" ExeCommand="explorer.exe &quot;[#GraftlineExe]&quot;" Return="asyncNoWait" Impersonate="yes" />
+
+    <UI>
+      <TextStyle Id="GL_Font_Bold" FaceName="Segoe UI" Size="8" Bold="yes" />
+      <Dialog Id="DataInfoDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="290" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Where Graftline keeps its files" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="290" Height="15" Transparent="yes" NoPrefix="yes" Text="Everything stays on this computer. Graftline stores no passwords." />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+
+        <Control Id="ProgramHead" Type="Text" X="20" Y="54" Width="330" Height="12" NoPrefix="yes" Text="{\GL_Font_Bold}Program (for all users)" />
+        <Control Id="ProgramPath" Type="Text" X="30" Y="67" Width="320" Height="12" NoPrefix="yes" Text="[INSTALLFOLDER]" />
+        <Control Id="ProgramNote" Type="Text" X="30" Y="79" Width="320" Height="12" NoPrefix="yes" Text="graftline.exe, plus Start menu and desktop shortcuts" />
+
+        <Control Id="DataHead" Type="Text" X="20" Y="98" Width="330" Height="12" NoPrefix="yes" Text="{\GL_Font_Bold}Your settings (separately for each Windows user)" />
+        <Control Id="DataPath" Type="Text" X="30" Y="111" Width="320" Height="12" NoPrefix="yes" Text="[AppDataFolder]graftline\" />
+        <Control Id="Data1" Type="Text" X="36" Y="125" Width="314" Height="10" NoPrefix="yes" Text="recent.json — the list of recent repositories" />
+        <Control Id="Data2" Type="Text" X="36" Y="136" Width="314" Height="10" NoPrefix="yes" Text="ui-prefs.json, window.json — theme, open tabs, window size" />
+        <Control Id="Data3" Type="Text" X="36" Y="147" Width="314" Height="10" NoPrefix="yes" Text="cache\ — commit lists that make large repositories open faster" />
+        <Control Id="Data4" Type="Text" X="36" Y="158" Width="314" Height="10" NoPrefix="yes" Text="graftline.log, webview\ — log of the last run and the app's browser cache" />
+
+        <Control Id="GitHead" Type="Text" X="20" Y="176" Width="330" Height="12" NoPrefix="yes" Text="{\GL_Font_Bold}Git" />
+        <Control Id="GitNote" Type="Text" X="30" Y="189" Width="320" Height="36" NoPrefix="yes" Text="Fetch, pull, push, clone and history changes use the Git that is installed on this computer, with your SSH keys and credential helper. Without Git, Graftline can still browse repositories." />
+
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="CustomizeDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- Insert DataInfoDlg between CustomizeDlg and VerifyReadyDlg (a later NewDialog wins). -->
+      <Publish Dialog="CustomizeDlg" Control="Next" Event="NewDialog" Value="DataInfoDlg" Order="10" Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="DataInfoDlg" Order="10" Condition="NOT Installed" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchGraftline" Order="10"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

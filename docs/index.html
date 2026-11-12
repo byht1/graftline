@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Graftline — See the history. Shape it safely.</title>
+  <meta name="description" content="Graftline is a free desktop Git client built around the commit graph. Stage by line, rebase interactively, resolve conflicts, and undo what you did not mean.">
+  <meta name="theme-color" content="#14B8A6">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="alternate icon" href="assets/favicon.ico">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta property="og:title" content="Graftline — See the history. Shape it safely.">
+  <meta property="og:description" content="A free desktop Git client built around the commit graph, for Windows, macOS and Linux.">
+  <meta property="og:image" content="https://byht1.github.io/graftline/assets/og.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script>
+    // Theme before first paint: saved choice, otherwise the system setting.
+    (() => {
+      let t = null;
+      try { t = localStorage.getItem('gl-site-theme'); } catch {}
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+  <style>
+    :root {
+      --indigo: #0d9488; --indigo-hover: #0f766e; --violet: #d97706; --lavender: #5eead4; --teal: #0d9488; --slate: #334155;
+      --bg: #ffffff; --surface: #ffffff; --canvas: #f3f7f6; --ink: #10201d; --text: #1f2d2a; --muted: #55675f; --line: #dfe8e5; --line-strong: #c9d6d2;
+      --header-bg: rgba(255, 255, 255, 0.86); --glow: #e2f7f3; --bar: #f6f9f8; --link: #0f766e;
+      --ic-bg: #e2f7f3; --ic-fg: #0d9488; --ic-teal-bg: #fef3c7; --ic-teal-fg: #b45309;
+      --free-bg: linear-gradient(100deg, #f2fbf9 0%, #f3f7f6 55%, #fdf3df 100%);
+      --card-shadow: 0 1px 2px rgba(23, 27, 47, 0.04); --card-hover: #9bdcd2; --win-shadow: 0 30px 80px rgba(8, 40, 36, 0.16), 0 2px 8px rgba(8, 40, 36, 0.06);
+      --code-bg: #0b1513;
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --indigo: #14b8a6; --indigo-hover: #2dd4bf; --violet: #fbbf24; --teal: #2dd4bf; --slate: #cbd5e1;
+      --bg: #0b1211; --surface: #0f1917; --canvas: #0d1614; --ink: #eef5f3; --text: #d3dfdc; --muted: #9db3ae; --line: #1f3330; --line-strong: #2e4a45;
+      --header-bg: rgba(11, 18, 17, 0.82); --glow: rgba(20, 184, 166, 0.2); --bar: #12201e; --link: #5eead4;
+      --ic-bg: rgba(45, 212, 191, 0.14); --ic-fg: #5eead4; --ic-teal-bg: rgba(245, 158, 11, 0.14); --ic-teal-fg: #fbbf24;
+      --free-bg: linear-gradient(100deg, #12201e 0%, #0f1917 55%, #221c0f 100%);
+      --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); --card-hover: #2e6b62; --win-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(45, 212, 191, 0.12);
+      --code-bg: #070d0c;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--font); -webkit-font-smoothing: antialiased; transition: background 0.2s, color 0.2s; }
+    a { color: inherit; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
+    img { max-width: 100%; }
+
+    header.top { position: sticky; top: 0; z-index: 10; background: var(--header-bg); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+    header.top .wrap { display: flex; align-items: center; gap: 28px; height: 72px; }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-weight: 700; font-size: 24px; letter-spacing: -0.02em; }
+    .logo img { width: 36px; height: 36px; }
+    nav.links { display: flex; gap: 32px; margin-left: auto; font-size: 15.5px; font-weight: 500; color: var(--ink); }
+    nav.links a { text-decoration: none; opacity: 0.85; }
+    nav.links a:hover { opacity: 1; color: var(--link); }
+    .theme-toggle { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; }
+    .theme-toggle:hover { border-color: var(--indigo); }
+    .theme-toggle svg { width: 19px; height: 19px; }
+    :root[data-theme="dark"] .theme-toggle .moon, :root:not([data-theme="dark"]) .theme-toggle .sun { display: none; }
+    .btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 24px; border-radius: 10px; font-weight: 600; font-size: 16px; text-decoration: none; border: 1px solid transparent; transition: background 0.15s, transform 0.15s, border-color 0.15s; }
+    .btn svg { width: 20px; height: 20px; flex: none; }
+    .btn.primary { background: var(--indigo); color: #fff; box-shadow: 0 6px 20px rgba(13, 148, 136, 0.28); }
+    .btn.primary:hover { background: var(--indigo-hover); transform: translateY(-1px); }
+    .btn.outline { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+    .btn.outline:hover { border-color: var(--indigo); }
+    .btn.sm { padding: 9px 16px; font-size: 14.5px; }
+
+    .hero { padding: 72px 0 40px; background: radial-gradient(1100px 520px at 85% 10%, var(--glow) 0%, transparent 70%); }
+    .hero .wrap { display: grid; grid-template-columns: 0.92fr 1.08fr; gap: 48px; align-items: center; }
+    .hero-logo { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+    .hero-logo img { width: 84px; height: 84px; }
+    .hero-logo span { font-size: 58px; font-weight: 700; letter-spacing: -0.03em; color: var(--ink); }
+    h1 { font-size: clamp(36px, 4.4vw, 54px); line-height: 1.08; letter-spacing: -0.03em; margin: 0 0 18px; font-weight: 800; color: var(--ink); }
+    .lead { font-size: 19px; color: var(--muted); margin: 0 0 30px; max-width: 560px; }
+    .cta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+    .cta small { width: 100%; color: var(--muted); font-size: 13.5px; }
+    .cta small a { color: var(--link); text-decoration: none; }
+    .window { min-width: 0; border-radius: 16px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--win-shadow); }
+    .window .bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; background: var(--bar); border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+    .window .bar i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+    .window .bar i:nth-child(1) { background: #ff5f57; } .window .bar i:nth-child(2) { background: #febc2e; } .window .bar i:nth-child(3) { background: #28c840; }
+    .window .bar b { display: flex; align-items: center; gap: 7px; margin-left: 10px; color: var(--ink); font-weight: 600; }
+    .window .bar b img { width: 18px; height: 18px; }
+    .window > img { display: block; width: 100%; height: auto; }
+
+    section { padding: 88px 0; }
+    .head { text-align: center; max-width: 720px; margin: 0 auto 48px; }
+    .head h2 { font-size: clamp(30px, 3.6vw, 40px); letter-spacing: -0.03em; line-height: 1.12; margin: 0 0 12px; color: var(--ink); }
+    .head p { color: var(--muted); font-size: 18px; margin: 0; }
+
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+    .card { min-width: 0; padding: 26px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--card-shadow); transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s; }
+    .card:hover { border-color: var(--card-hover); box-shadow: 0 10px 30px rgba(13, 148, 136, 0.1); transform: translateY(-2px); }
+    .card .ic { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; background: var(--ic-bg); color: var(--ic-fg); margin-bottom: 16px; }
+    .card .ic svg { width: 24px; height: 24px; }
+    .card .ic.teal { background: var(--ic-teal-bg); color: var(--ic-teal-fg); }
+    .card h3 { margin: 0 0 8px; font-size: 19px; color: var(--ink); letter-spacing: -0.01em; }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+    .free { margin-top: 32px; display: flex; align-items: center; gap: 22px; padding: 22px 30px; border-radius: 16px; border: 1px solid var(--line); background: var(--free-bg); position: relative; overflow: hidden; }
+    .free::after { content: ""; position: absolute; right: -40px; top: -20px; width: 380px; height: 140px; background: radial-gradient(closest-side, rgba(20, 184, 166, 0.22), transparent 70%), radial-gradient(closest-side at 70% 60%, rgba(245, 158, 11, 0.2), transparent 70%); }
+    .free svg { width: 30px; height: 30px; color: var(--violet); flex: none; }
+    .free b { font-size: 22px; color: var(--ink); white-space: nowrap; }
+    .free span { color: var(--muted); position: relative; z-index: 1; }
+    .free .sep { width: 1px; height: 32px; background: var(--line-strong); }
+
+    .tabs { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+    .tabs button { font: 600 14.5px var(--font); color: var(--slate); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 16px; cursor: pointer; }
+    .tabs button[aria-selected="true"] { color: #fff; background: var(--indigo); border-color: var(--indigo); }
+    .caption { text-align: center; color: var(--muted); margin: 18px auto 0; max-width: 700px; min-height: 52px; }
+    .caption a { color: var(--link); }
+    .gallery .window { max-width: 1100px; margin: 0 auto; }
+
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+    .split h2 { font-size: clamp(28px, 3.4vw, 38px); letter-spacing: -0.03em; line-height: 1.15; margin: 0 0 14px; color: var(--ink); }
+    .split p { color: var(--muted); font-size: 17px; }
+    .checks { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 10px; }
+    .checks li { display: flex; gap: 10px; }
+    .checks li::before { content: "✓"; color: var(--teal); font-weight: 700; }
+    .checks code { font: 13px var(--mono); background: var(--canvas); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+    .keys { display: grid; gap: 8px; }
+    .key { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: var(--canvas); border: 1px solid var(--line); font-size: 15px; color: var(--ink); }
+    kbd { font: 600 12px var(--mono); padding: 3px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line-strong); border-bottom-width: 2px; color: var(--ink); white-space: nowrap; }
+
+    .dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .dl .card { display: flex; flex-direction: column; gap: 12px; }
+    .dl .card .btn { align-self: flex-start; margin-top: auto; }
+    .alt { font-size: 14px; color: var(--muted); }
+    a.alt:hover { color: var(--link); }
+    pre.code { margin: 0; padding: 14px 16px; border-radius: 12px; background: var(--code-bg); font: 13px/1.6 var(--mono); color: #e2e8f0; overflow-x: auto; white-space: pre; }
+    pre.code .c { color: #64748b; }
+    pre.code .k { color: var(--lavender); }
+    .bg-canvas { background: var(--canvas); }
+
+    footer { border-top: 1px solid var(--line); padding: 30px 0; color: var(--muted); font-size: 15px; }
+    footer .wrap { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+    footer .logo { font-size: 20px; }
+    footer .logo img { width: 30px; height: 30px; }
+    footer .sep { width: 1px; height: 26px; background: var(--line); }
+    footer .sp { flex: 1; }
+    footer nav { display: flex; gap: 26px; color: var(--ink); }
+    footer nav a { text-decoration: none; }
+    footer nav a:hover { color: var(--link); }
+
+    @media (max-width: 1000px) {
+      .hero .wrap, .split { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: repeat(2, 1fr); }
+      .dl { grid-template-columns: 1fr; }
+      nav.links { display: none; }
+      .theme-toggle { margin-left: auto; }
+    }
+    @media (max-width: 640px) {
+      .wrap { padding: 0 16px; }
+      .cards { grid-template-columns: 1fr; }
+      .hero-logo span { font-size: 44px; } .hero-logo img { width: 64px; height: 64px; }
+      .free { flex-wrap: wrap; } .free .sep { display: none; } .free b { white-space: normal; }
+      section { padding: 60px 0; }
+      header.top .wrap { gap: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn, .card, body { transition: none; } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="logo" href="#"><img src="assets/symbol.svg" alt=""><span>Graftline</span></a>
+      <nav class="links">
+        <a href="#features">Features</a>
+        <a href="#screens">Screens</a>
+        <a href="#safety">Safety</a>
+        <a href="https://github.com/byht1/graftline#readme">Docs</a>
+        <a href="https://github.com/byht1/graftline">GitHub</a>
+      </nav>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch light / dark theme" title="Switch light / dark theme">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+      <a class="btn primary sm" href="#downloads">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
+        Download
+      </a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <div class="hero-logo"><img src="assets/symbol.svg" alt=""><span>Graftline</span></div>
+        <h1>See the history. Shape it safely.</h1>
+        <p class="lead">Graftline is a free desktop Git client built around the commit graph. It opens large repositories in under a second and asks before anything that can lose work.</p>
+        <div class="cta">
+          <a class="btn primary" id="dl-main" href="#downloads">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
+            <span id="dl-main-text">Download Graftline</span>
+          </a>
+          <a class="btn outline" href="https://github.com/byht1/graftline">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
+            View on GitHub
+          </a>
+          <small>Windows · macOS · Linux · one binary, no account, no telemetry · <a href="#downloads">all downloads</a></small>
+        </div>
+      </div>
+      <div class="window">
+        <div class="bar"><i></i><i></i><i></i><b><img src="assets/symbol.svg" alt="">Graftline</b></div>
+        <img data-shot="graph" src="assets/screens/graph-light.png" alt="Graftline showing a commit graph with branches and a merge commit" width="1440" height="860">
+      </div>
+    </div>
+  </section>
+
+  <section id="features" style="padding-top: 40px">
+    <div class="wrap">
+      <div class="cards">
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.5"/><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="7" r="2.5"/><path d="M6 7.5v9M18 9.5c0 4-6 3-12 6"/></svg></div>
+          <h3>Graph</h3>
+          <p>Branches, tags, stashes and remotes in one graph. Search by message, author or hash. Scrolls smoothly at 86,000 commits.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="3"/></svg></div>
+          <h3>Stage precisely</h3>
+          <p>Stage, unstage or discard a file, a hunk or single lines. Unified and side-by-side diffs with syntax highlighting.</p>
+        </div>
+        <div class="card">
+          <div class="ic teal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.5"/><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="13" r="2.5"/><path d="M6 7.5v9M6 8c0 4 5 5 9.5 5"/></svg></div>
+          <h3>Rewrite history</h3>
+          <p>Merge, rebase, cherry-pick, revert and reset. Interactive rebase reorders, squashes, rewords and drops commits in a dialog.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.500 8-8 9-4.500-1-8-4-8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <h3>Resolve conflicts</h3>
+          <p>Take a side for a file, a block or a line, or edit the result by hand. The labels say what “ours” and “theirs” are.</p>
+        </div>
+      </div>
+      <div class="free">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="1.5"/><path d="M12 8v13M3 12h18M12 8c-1.5-3-5-3.5-5.5-1.5S9 8 12 8Zm0 0c1.5-3 5-3.5 5.5-1.5S15 8 12 8Z"/></svg>
+        <span class="sep"></span>
+        <b>Free to use</b>
+        <span>No paid tiers, no account, open source (MIT). Your SSH keys and credential helper keep working: Graftline uses the Git you already have.</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="screens" class="bg-canvas gallery">
+    <div class="wrap">
+      <div class="head">
+        <h2>See it in action</h2>
+        <p>Light and dark themes follow your system — and so does this page.</p>
+      </div>
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-i="0">Changes</button>
+        <button role="tab" aria-selected="false" data-i="1">Conflicts</button>
+        <button role="tab" aria-selected="false" data-i="2">Interactive rebase</button>
+        <button role="tab" aria-selected="false" data-i="3">Blame</button>
+        <button role="tab" aria-selected="false" data-i="4">Graph</button>
+      </div>
+      <div class="window">
+        <div class="bar"><i></i><i></i><i></i><b><img src="assets/symbol.svg" alt="">Graftline</b></div>
+        <img id="shot-img" data-shot="changes" src="assets/screens/changes-light.png" alt="Graftline screenshot" width="1440" height="860">
+      </div>
+      <p class="caption" id="shot-caption">Click line numbers to choose the lines of a commit. Stage them, or discard them with an undo.</p>
+    </div>
+  </section>
+
+  <section id="safety">
+    <div class="wrap split">
+      <div>
+        <h2>It does not lose your work</h2>
+        <p>A Git client handles work that is not saved anywhere else. Graftline treats every destructive action as a decision that is yours.</p>
+        <ul class="checks">
+          <li>Discard, reset --hard and abort save the affected files in a snapshot first, and offer Undo</li>
+          <li>Force push is always <code>--force-with-lease</code> and tells how many remote commits it removes</li>
+          <li>Deleting a branch lists the commits that exist nowhere else</li>
+          <li>Rewriting commits that are already pushed asks before it starts</li>
+          <li>A failed Git command is shown word for word, with the command line</li>
+        </ul>
+      </div>
+      <div class="keys">
+        <div class="key">Command palette<kbd>Ctrl + P</kbd></div>
+        <div class="key">Search commits<kbd>Ctrl + F</kbd></div>
+        <div class="key">Fetch / Pull / Push<kbd>Ctrl + Shift + F / L / P</kbd></div>
+        <div class="key">Create a branch<kbd>Ctrl + B</kbd></div>
+        <div class="key">Show the changes<kbd>Ctrl + Shift + C</kbd></div>
+        <div class="key">Stage the focused file<kbd>Space</kbd></div>
+        <div class="key">Commit<kbd>Ctrl + Enter</kbd></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="downloads" class="bg-canvas">
+    <div class="wrap">
+      <div class="head">
+        <h2>Download Graftline</h2>
+        <p>Free for Windows, macOS and Linux.</p>
+      </div>
+      <div class="dl">
+        <div class="card">
+          <h3>Windows 10/11</h3>
+          <p>The installer shows where the program and your settings are stored, and adds “Open in Graftline” to folders.</p>
+          <a class="btn primary sm" href="https://github.com/byht1/graftline/releases/latest/download/Graftline-Setup-x64.msi">Installer (.msi)</a>
+          <a class="alt" href="https://github.com/byht1/graftline/releases/latest/download/graftline.exe">Portable .exe — no installation</a>
+        </div>
+        <div class="card">
+          <h3>macOS 11+</h3>
+          <p>Universal app for Apple Silicon and Intel. Drag Graftline to Applications.</p>
+          <a class="btn primary sm" href="https://github.com/byht1/graftline/releases/latest/download/Graftline-macOS-universal.dmg">Disk image (.dmg)</a>
+          <span class="alt">Not notarized yet: right-click → Open the first time.</span>
+        </div>
+        <div class="card">
+          <h3>Linux</h3>
+          <p>Debian / Ubuntu package with a desktop entry, or a portable archive. Needs WebKitGTK 4.1.</p>
+          <a class="btn primary sm" href="https://github.com/byht1/graftline/releases/latest/download/graftline-linux-amd64.deb">Package (.deb)</a>
+          <a class="alt" href="https://github.com/byht1/graftline/releases/latest/download/graftline-linux-x86_64.tar.gz">Portable .tar.gz</a>
+        </div>
+      </div>
+      <div class="dl" style="margin-top: 20px">
+        <div class="card">
+          <h3>Git</h3>
+          <p>Fetch, pull, push, clone and history changes use the Git on your computer. Without it, Graftline still browses repositories.</p>
+          <a class="alt" href="https://git-scm.com/downloads">Get Git →</a>
+        </div>
+        <div class="card">
+          <h3>From source</h3>
+          <p>Needs stable Rust and a C compiler. No Node.js.</p>
+          <pre class="code">git clone https://github.com/byht1/graftline
+cd graftline &amp;&amp; cargo build --release</pre>
+        </div>
+        <div class="card">
+          <h3>Open a repository</h3>
+          <p>Pass a folder on the command line, drop it on the window, or use the folder menu.</p>
+          <pre class="code"><span class="c"># any folder inside a repository</span>
+graftline ~/code/my-project</pre>
+        </div>
+      </div>
+      <p class="caption">Checksums and all files: <a href="https://github.com/byht1/graftline/releases/latest">the latest release</a>.</p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <a class="logo" href="#"><img src="assets/symbol.svg" alt=""><span>Graftline</span></a>
+      <span class="sep"></span>
+      <span>A free desktop Git client built around the commit graph.</span>
+      <span class="sp"></span>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#screens">Screens</a>
+        <a href="https://github.com/byht1/graftline#readme">Docs</a>
+        <a href="https://github.com/byht1/graftline">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    // The main button downloads the right file for the visitor's system.
+    (() => {
+      const L = 'https://github.com/byht1/graftline/releases/latest/download/';
+      const ua = navigator.userAgent;
+      const os = /Windows/.test(ua) ? 'win' : /Mac OS X|Macintosh/.test(ua) ? 'mac' : /Linux|X11/.test(ua) && !/Android/.test(ua) ? 'linux' : null;
+      const map = {
+        win: ['Graftline-Setup-x64.msi', 'Download for Windows'],
+        mac: ['Graftline-macOS-universal.dmg', 'Download for macOS'],
+        linux: ['graftline-linux-amd64.deb', 'Download for Linux'],
+      };
+      if (!os) return;
+      document.getElementById('dl-main').href = L + map[os][0];
+      document.getElementById('dl-main-text').textContent = map[os][1];
+    })();
+
+    const shots = [
+      ['changes', 'Click line numbers to choose the lines of a commit. Stage them, or discard them with an undo.'],
+      ['conflict', 'A merge conflict: choose lines from each side and see the result before you mark the file resolved.'],
+      ['rebase', 'Interactive rebase: reorder, squash, fixup, reword or drop commits. Published commits are marked.'],
+      ['blame', 'Blame shows the commit of every line. Click a line to go to that commit in the graph.'],
+      ['graph', 'The commit graph with branches, remote branches, tags and stashes; the panel shows what a commit changed.'],
+    ];
+    const root = document.documentElement;
+    // Screenshots match the page theme: <name>-light.png / <name>-dark.png.
+    const syncShots = () => {
+      const mode = root.dataset.theme === 'dark' ? 'dark' : 'light';
+      for (const img of document.querySelectorAll('img[data-shot]')) img.src = `assets/screens/${img.dataset.shot}-${mode}.png`;
+    };
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem('gl-site-theme', root.dataset.theme); } catch {}
+      syncShots();
+    });
+    const img = document.getElementById('shot-img');
+    const caption = document.getElementById('shot-caption');
+    for (const tab of document.querySelectorAll('.tabs button')) {
+      tab.addEventListener('click', () => {
+        for (const t of document.querySelectorAll('.tabs button')) t.setAttribute('aria-selected', String(t === tab));
+        const [name, text] = shots[Number(tab.dataset.i)];
+        img.dataset.shot = name;
+        caption.textContent = text;
+        syncShots();
+      });
+    }
+    syncShots();
+  </script>
+</body>
+</html>
