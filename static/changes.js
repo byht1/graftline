@@ -1,7 +1,7 @@
 // Graftline — the working tree panel: unstaged and staged files, staging by file, hunk and
 // line, discard, and the commit box.
 
-import { h, fill, icon, api, qs, toast, copyText, contextMenu, confirmDialog, openModal, fmtNum } from '/ui.js';
+import { h, fill, icon, api, qs, store, toast, copyText, contextMenu, confirmDialog, openModal, fmtNum } from '/ui.js';
 import { createDiffPanel } from '/diff.js';
 
 const plural = (n, word) => `${fmtNum(n)} ${word}${n === 1 ? '' : 's'}`;
@@ -232,7 +232,7 @@ export function createChanges(ctx) {
       const n = pickedCount();
       const sel = () => [...st.picked.entries()].filter(([, s]) => s.size).map(([hi, s]) => hunkSel(hi, [...s]));
       if (!n) {
-        fill(actions, h('span', { class: 'dim small' }, 'Click line numbers to select lines'));
+        fill(actions, h('span', { class: 'dim small' }, store.get('gl.diffMode', 'unified') === 'split' ? 'Switch to Unified to select single lines' : 'Click line numbers to select lines'));
       } else if (side === 'unstaged') {
         fill(actions,
           h('button', { class: 'btn sm danger-ghost', onclick: () => discardConfirm(sel(), plural(n, 'selected line')) }, icon('undo', 13), `Discard ${plural(n, 'line')}`),
@@ -251,7 +251,7 @@ export function createChanges(ctx) {
         drawActions();
         return diff;
       },
-      renderOptions: (d, mode) => ({
+      renderOptions: (d, mode) => (queueMicrotask(drawActions), {
         hunkActions: d.binary ? null : (_hunk, hi) => (side === 'unstaged'
           ? [h('button', { class: 'btn sm ghost', title: 'Discard this hunk', onclick: () => discardConfirm([hunkSel(hi, null)], 'this hunk') }, icon('undo', 12), 'Discard hunk'),
             h('button', { class: 'btn sm', title: 'Stage this hunk', onclick: () => apply('stage', [hunkSel(hi, null)]) }, icon('plus', 12), 'Stage hunk')]

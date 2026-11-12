@@ -382,7 +382,10 @@ fn a_failed_job_reports_the_command_and_the_output() {
     let job = run_job(parent.path(), "Clone", vec!["clone".into(), "--progress".into(), missing, "target".into()]);
     assert_eq!(job.state, "failed");
     assert!(job.command.starts_with("git clone --progress "));
-    assert!(job.output.as_deref().unwrap_or("").contains("does not appear to be a git repository"), "{:?}", job.output);
+    // The wording of git differs between versions and systems; both name the missing repository.
+    let output = job.output.as_deref().unwrap_or("");
+    assert!(output.contains("does not appear to be a git repository") || output.contains("does not exist"), "{output}");
+    assert!(output.contains("no-such-remote"), "{output}");
     assert!(!parent.path().join("target").exists());
 }
 
@@ -402,4 +405,38 @@ fn deleting_a_remote_branch_goes_through_push() {
     let deleted = net(&t, json!({ "job": "push-delete", "remote": "origin", "refname": "topic" }));
     assert_eq!(deleted.state, "done", "{:?}", deleted.output);
     assert!(remote.find_reference("refs/heads/topic").is_err());
+}
+
+#[test]
+fn a_running_job_can_be_cancelled() {
+    if !has_git() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, mut rx) = tokio::sync::broadcast::channel(256);
+    let jobs = Jobs::new(tx);
+    // A git command that would run for a minute: an alias that starts a shell and sleeps.
+    let args = vec!["-c".to_string(), "alias.wait=!sleep 60".to_string(), "wait".to_string()];
+    let started = std::time::Instant::now();
+    let job = jobs.start(None, "Wait", dir.path().to_path_buf(), args, |_| {}).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    assert_eq!(jobs.list().len(), 1, "the job is running");
+    assert!(!jobs.cancel("no-such-job"));
+    assert!(jobs.cancel(&job.id));
+    let mut last = String::new();
+    while started.elapsed() < std::time::Duration::from_secs(20) {
+        match rx.try_recv() {
+            Ok(text) => {
+                let v: Value = serde_json::from_str(&text).unwrap();
+                last = v["job"]["state"].as_str().unwrap().to_string();
+                if last != "running" {
+                    break;
+                }
+            }
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(20)),
+        }
+    }
+    assert_eq!(last, "cancelled", "the job must stop long before the minute is over");
+    assert!(started.elapsed() < std::time::Duration::from_secs(20));
+    assert!(jobs.list().is_empty());
 }

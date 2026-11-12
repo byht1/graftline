@@ -438,6 +438,8 @@ fn install(method: Method, file: &Path, log: &Path) -> Result<()> {
 }
 
 #[cfg(unix)]
+// The log file is written by the macOS script only.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
 fn install(method: Method, file: &Path, log: &Path) -> Result<()> {
     let pid = std::process::id();
     let q = |p: &Path| format!("'{}'", p.display().to_string().replace('\'', r"'\''"));
