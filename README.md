@@ -109,12 +109,13 @@ reachable from all refs, 1,018 tags. Machine: Windows 11, 12 logical cores, rele
 
 | Step | Time |
 |---|---|
-| First open: read all commits (8 threads), order them, lay out the graph, first page of 200 rows | 0.75 s |
-| Later launches (commits come from the disk cache) | 0.27 s |
-| Refresh after a change in the repository (commits already in memory) | 0.21 s |
-| Search 86,230 commits for a word | 0.02 s |
+| First open: read all commits (8 threads), order them, lay out the graph, first page of 200 rows | 0.40 s |
+| Later launches (commits come from the disk cache) | 0.13 s |
+| Refresh after a change in the repository (commits already in memory) | 0.11 s |
+| Search 86,230 commits for a word | 0.01 s |
 
 The rows come from `graftline-bench <repo>` (`cargo run --release --bin graftline-bench -- <repo>`).
+Each value is the median of three runs with the repository files in the operating system's cache.
 Run it on your own repository to compare. The frame time of the window is not measured yet.
 
 How it stays fast:
