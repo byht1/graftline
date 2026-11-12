@@ -1,4 +1,4 @@
-//! Every theme in static/style.css must define the same variables, and its graph colors
+//! Every theme in assets/ui/themes.css must define the same variables, and its graph colors
 //! must stand out from the backgrounds they are drawn on.
 
 use std::collections::BTreeMap;
@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 const MIN_CONTRAST: f64 = 3.0;
 
 fn themes() -> BTreeMap<String, BTreeMap<String, String>> {
-    let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/static/style.css")).unwrap();
+    let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/ui/themes.css")).unwrap();
     let mut out = BTreeMap::new();
     let mut rest = css.as_str();
     while let Some(at) = rest.find(":root[data-theme=\"") {

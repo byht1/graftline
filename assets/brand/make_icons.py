@@ -1,4 +1,4 @@
-"""Renders the raster icons from the geometry of static/brand/app-icon.svg.
+"""Renders the raster icons from the geometry of assets/brand/app-icon.svg.
 
 Run from the repository root:  python assets/brand/make_icons.py
 Needs Pillow. The shapes below mirror the SVG, on its 64-unit grid.
@@ -47,8 +47,6 @@ if __name__ == "__main__":
     for s in (128, 256, 512, 1024):
         render(s).save(f"assets/icons/graftline-{s}.png")
     render(256).save("assets/graftline.ico", sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
-    with open("assets/window-icon-64.rgba", "wb") as f:
-        f.write(render(64).tobytes())
     render(192).save("docs/assets/icon-192.png")
     render(512).save("docs/assets/icon-512.png")
     render(180).save("docs/assets/apple-touch-icon.png")

@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 
 fn has_git() -> bool {
     // git starts this binary as the sequence editor of an interactive rebase.
-    std::env::set_var("GRAFTLINE_EDITOR_EXE", env!("CARGO_BIN_EXE_graftline-server"));
+    std::env::set_var("GRAFTLINE_EDITOR_EXE", env!("CARGO_BIN_EXE_graftline-bench"));
     let found = gitcli::detect().is_some();
     if !found {
         eprintln!("skipped: git is not on PATH");

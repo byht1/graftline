@@ -1,9 +1,5 @@
-//! UI preferences of the desktop app (theme, open tabs, panel sizes).
-//!
-//! The web UI keeps them in `localStorage`. The desktop window opens the server on a new
-//! random port at each launch, so the page origin changes and `localStorage` starts empty.
-//! The page therefore copies its `gl.*` keys to `ui-prefs.json`, and the server puts them
-//! back into the page before the first script runs.
+//! UI preferences of the desktop app (theme, open tabs, panel sizes), kept in `ui-prefs.json`
+//! as a map of `gl.*` keys to JSON text.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -16,9 +12,9 @@ const PREFIX: &str = "gl.";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Prefs {
-    /// Increases with each save. The page keeps the value it has; a lower value means stale data.
+    /// Increases with each save.
     pub rev: u64,
-    /// `localStorage` key -> raw string value.
+    /// Key -> JSON text of the value.
     pub items: BTreeMap<String, String>,
 }
 
@@ -54,19 +50,6 @@ pub fn check(items: BTreeMap<String, String>) -> Result<BTreeMap<String, String>
     Ok(items)
 }
 
-/// The page script that restores the preferences. It runs before the theme script.
-/// It replaces the `gl.*` keys only when the page has an older revision (a new origin has none).
-pub fn inject(html: &str, prefs: &Prefs) -> String {
-    // "</" inside the JSON would close the script element.
-    let data = serde_json::to_string(prefs).unwrap_or_else(|_| "{}".into()).replace("</", "<\\/");
-    let script = format!(
-        "<script>try{{const p={data};const r=Number(localStorage.getItem('gl.__rev')||0);\
-if(p.rev>r){{for(const k of Object.keys(localStorage))if(k.startsWith('gl.'))localStorage.removeItem(k);\
-for(const[k,v]of Object.entries(p.items))localStorage.setItem(k,v);localStorage.setItem('gl.__rev',String(p.rev));}}}}catch{{}}</script>"
-    );
-    html.replacen("<!--gl-prefs-->", &script, 1)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,15 +73,5 @@ mod tests {
         let mut big = BTreeMap::new();
         big.insert("gl.big".to_string(), "x".repeat(MAX_BYTES + 1));
         assert!(check(big).is_err());
-    }
-
-    #[test]
-    fn inject_escapes_script_end() {
-        let mut p = Prefs { rev: 1, ..Default::default() };
-        p.items.insert("gl.x".into(), "</script><b>".into());
-        let html = inject("<head><!--gl-prefs--></head>", &p);
-        assert!(!html.contains("</script><b>"));
-        assert!(html.contains("<\\/script>"));
-        assert!(!html.contains("<!--gl-prefs-->"));
     }
 }

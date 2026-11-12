@@ -7,7 +7,7 @@ use git2::{IndexEntry, Repository, RepositoryState};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ConflictFile {
     pub path: String,
@@ -19,7 +19,7 @@ pub struct ConflictFile {
     pub base: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConflictDetail {
     pub path: String,
@@ -136,7 +136,7 @@ pub fn detail(repo: &Repository, path: &str) -> Result<ConflictDetail> {
     })
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "choice", rename_all = "kebab-case")]
 pub enum Choice {
     /// Take our version of the whole file (or keep it deleted when we deleted it).

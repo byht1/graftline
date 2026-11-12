@@ -33,7 +33,7 @@ pub fn open(root: &Path) -> Result<Repository> {
     Repository::open(root).with_context(|| format!("Cannot open the repository at {}", root.display()))
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Head {
     /// Short name of the checked-out branch; `None` when HEAD is detached.
@@ -44,7 +44,7 @@ pub struct Head {
     pub unborn: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Branch {
     pub name: String,
@@ -57,7 +57,7 @@ pub struct Branch {
     pub behind: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteBranch {
     /// Name without the remote prefix.
@@ -67,7 +67,7 @@ pub struct RemoteBranch {
     pub oid: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Remote {
     pub name: String,
@@ -76,7 +76,7 @@ pub struct Remote {
     pub branches: Vec<RemoteBranch>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Tag {
     pub name: String,
@@ -85,7 +85,7 @@ pub struct Tag {
     pub annotated: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Stash {
     pub index: usize,
@@ -93,7 +93,7 @@ pub struct Stash {
     pub message: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Refs {
     pub head: Head,
@@ -231,7 +231,7 @@ fn natural_key(s: &str) -> Vec<(u8, u64, String)> {
 
 // ---------------------------------------------------------------- commits
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Person {
     pub name: String,
@@ -265,7 +265,7 @@ pub struct FileChange {
     pub binary: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitDetail {
     pub oid: String,

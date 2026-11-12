@@ -17,13 +17,13 @@ Typography: **Inter** (UI, brand), **JetBrains Mono** (code, hashes, diffs).
 
 Graftline is a sibling of Rowveil: the same layout, components and third-party themes. The accent differs (teal in place of indigo), so the two apps are told apart at a glance.
 
-Sources (vector masters) live in `static/brand/`:
+Sources (vector masters) live in `assets/brand/`:
 
 - `symbol.svg` — the trunk with a grafted branch;
 - `app-icon.svg` — the app icon tile;
 - `logo-horizontal.svg`, `logo-horizontal-dark.svg` — lockups with the tagline.
 
-The favicon is `static/favicon.svg`. Raster icons (`assets/graftline.ico`, `assets/icons/*.png`, `assets/window-icon-64.rgba`), the installer bitmaps and the icons of the website are drawn by `assets/brand/make_icons.py` from the same geometry:
+The favicon is `assets/brand/favicon.svg`. Raster icons (`assets/graftline.ico`, `assets/icons/*.png`), the installer bitmaps and the icons of the website are drawn by `assets/brand/make_icons.py` from the same geometry:
 
 ```
 python assets/brand/make_icons.py
