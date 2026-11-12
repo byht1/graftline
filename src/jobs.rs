@@ -66,7 +66,13 @@ fn kill_tree(pid: u32) {
     #[cfg(not(windows))]
     {
         // The job is the leader of its own process group: the negative id addresses the group.
-        let _ = std::process::Command::new("kill").args(["-TERM", &format!("-{pid}")]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        // The shell's built-in kill is used: a separate `kill` program is not always installed,
+        // and "--" keeps the negative id from being read as an option.
+        let _ = std::process::Command::new("sh")
+            .args(["-c", &format!("kill -TERM -- -{pid}")])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
     }
 }
 
