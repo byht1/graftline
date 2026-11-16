@@ -8,7 +8,7 @@ Graftline 0.1.0 is the first release: a desktop Git client built around the comm
 | Windows | `graftline.exe` | Portable: a single file, no installation. |
 | **macOS 11+** | **`Graftline-macOS-universal.dmg`** | Apple Silicon and Intel. |
 | **Linux (Debian/Ubuntu)** | **`graftline-linux-amd64.deb`** | `sudo apt install ./graftline-linux-amd64.deb` |
-| Linux (other) | `graftline-linux-x86_64.tar.gz` | Needs WebKitGTK 4.1 and GTK 3; see README.txt inside. |
+| Linux (other) | `graftline-linux-x86_64.tar.gz` | Needs a Vulkan driver; README.txt inside lists the libraries. |
 | | `SHA256SUMS.txt` | Checksums. |
 
 ## What it does
@@ -35,7 +35,7 @@ Graftline 0.1.0 is the first release: a desktop Git client built around the comm
 | macOS | `~/Library/Application Support/graftline/` |
 | Linux | `~/.config/graftline/` |
 
-The folder holds `recent.json`, `ui-prefs.json`, `window.json`, `cache/`, `graftline.log` and the `webview/` cache. Graftline stores no passwords.
+The folder holds `recent.json`, `ui-prefs.json`, `window.json`, `cache/`, and `graftline.log`. Graftline stores no passwords.
 
 ## Notes
 
@@ -43,5 +43,5 @@ The folder holds `recent.json`, `ui-prefs.json`, `window.json`, `cache/`, `graft
 - **The builds are not code-signed yet.**
   - Windows SmartScreen: choose *More info → Run anyway*.
   - macOS: right-click the app → *Open*, or run `xattr -dr com.apple.quarantine /Applications/Graftline.app`.
-- **WebView2.** The Windows app needs the WebView2 runtime, which is preinstalled on Windows 10/11.
+- **Graphics.** The window is drawn on the GPU: DirectX 11 on Windows, Metal on macOS, Vulkan on Linux. Linux needs a Vulkan driver.
 - **Known limits** are listed in the README.

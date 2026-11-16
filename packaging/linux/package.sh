@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Packages the Linux build: a .deb and a portable .tar.gz.
-# Run after: cargo build --release   (needs libwebkit2gtk-4.1-dev and libgtk-3-dev)
+# Run after: cargo build --release   (the build packages are listed in the README)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$root/Cargo.toml" | head -1)"
@@ -23,7 +23,7 @@ Version: $version
 Section: vcs
 Priority: optional
 Architecture: amd64
-Depends: libwebkit2gtk-4.1-0, libgtk-3-0
+Depends: libxkbcommon0, libxkbcommon-x11-0, libxcb1, libx11-xcb1, libwayland-client0, libfontconfig1, libfreetype6, libvulkan1
 Recommends: git
 Maintainer: Graftline <99541944+byht1@users.noreply.github.com>
 Homepage: https://byht1.github.io/graftline/
@@ -47,14 +47,14 @@ Graftline $version for Linux (x86_64)
 
   ./graftline [repository]    desktop app
 
-The app needs WebKitGTK 4.1 and GTK 3:
-  Debian/Ubuntu:  sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0
-  Fedora:         sudo dnf install webkit2gtk4.1 gtk3
-  Arch:           sudo pacman -S webkit2gtk-4.1 gtk3
+The app draws its window with the GPU (Vulkan). It needs a Vulkan driver and these libraries:
+  Debian/Ubuntu:  sudo apt install libxkbcommon0 libxkbcommon-x11-0 libxcb1 libx11-xcb1 libwayland-client0 libfontconfig1 libfreetype6 libvulkan1
+  Fedora:         sudo dnf install libxkbcommon libxkbcommon-x11 libxcb wayland-libs-client fontconfig freetype vulkan-loader
+  Arch:           sudo pacman -S libxkbcommon libxkbcommon-x11 libxcb wayland fontconfig freetype2 vulkan-icd-loader
 
 Fetch, pull, push, clone and history changes need git on PATH.
 
-Your settings: ~/.config/graftline/ (recent.json, ui-prefs.json, window.json, cache/, graftline.log, webview/)
+Your settings: ~/.config/graftline/ (recent.json, ui-prefs.json, window.json, cache/, graftline.log)
 TXT
 tar -C "$(dirname "$tmp")" -czf "$dist/graftline-linux-x86_64.tar.gz" "$name"
 ls -la "$dist"

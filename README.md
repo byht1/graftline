@@ -1,11 +1,11 @@
-<p align="center"><img src="static/brand/logo-horizontal.svg" width="460" alt="Graftline — see the history, shape it safely"></p>
+<p align="center"><img src="assets/brand/logo-horizontal.svg" width="460" alt="Graftline — see the history, shape it safely"></p>
 
 # Graftline
 
 **English** · [Українська](README.uk.md)
 
 A desktop Git client built around the commit graph. One binary for Windows, macOS and Linux.
-The backend is Rust (axum + libgit2); the UI is vanilla JS embedded in the binary. No account, no telemetry.
+Written in Rust. The window is drawn on the GPU with [GPUI](https://www.gpui.rs/), the UI framework of the Zed editor; Git data comes from libgit2. No browser engine, no account, no telemetry.
 
 ![Graftline: the commit graph](docs/assets/screens/graph-dark.png)
 
@@ -54,7 +54,7 @@ Builds are on the [Releases](https://github.com/byht1/graftline/releases/latest)
 | Windows | `graftline.exe` | Portable: one file, no install |
 | macOS 11+ | `Graftline-macOS-universal.dmg` | Drag Graftline to Applications. First start: right-click → Open |
 | Debian / Ubuntu | `graftline-linux-amd64.deb` | `sudo apt install ./graftline-linux-amd64.deb` |
-| Linux (other) | `graftline-linux-x86_64.tar.gz` | Unpack and run `./graftline`. Needs WebKitGTK 4.1 and GTK 3 |
+| Linux (other) | `graftline-linux-x86_64.tar.gz` | Unpack and run `./graftline`. Needs a Vulkan driver; `README.txt` inside lists the libraries |
 
 The builds are not code-signed yet. Windows SmartScreen: *More info → Run anyway*. macOS: right-click → *Open*.
 
@@ -86,7 +86,8 @@ graftline path/to/repository  # open a repository (any folder inside it)
 | `Ctrl+Shift+F` / `L` / `P` | Fetch / pull / push |
 | `Ctrl+B`, `Ctrl+Shift+S` | Create a branch, stash |
 | `Ctrl+Shift+C` | Show the uncommitted changes |
-| `Space`, `Ctrl+Enter` | Stage the focused file, commit |
+| Double click, `Ctrl+Enter` | Stage or unstage a file, commit |
+| `Tab` / `Shift+Tab` | Next / previous text field |
 | `F5`, `Esc`, `F1` | Refresh, close a panel, list of shortcuts |
 
 On macOS use `⌘` in place of `Ctrl`.
@@ -99,7 +100,7 @@ On macOS use `⌘` in place of `Ctrl`.
 | macOS | `~/Library/Application Support/graftline/` |
 | Linux | `~/.config/graftline/` |
 
-The folder holds `recent.json` (recent repositories), `ui-prefs.json` (theme, tabs, panel sizes), `window.json`, `cache/` (commit lists that make large repositories open faster), `graftline.log` and the `webview/` cache. `--data-dir` or `GRAFTLINE_DATA_DIR` selects another folder.
+The folder holds `recent.json` (recent repositories), `ui-prefs.json` (theme, tabs, panel sizes), `window.json`, `cache/` (commit lists that make large repositories open faster), and `graftline.log`. `--data-dir` or `GRAFTLINE_DATA_DIR` selects another folder.
 
 ## Performance
 
@@ -108,20 +109,20 @@ reachable from all refs, 1,018 tags. Machine: Windows 11, 12 logical cores, rele
 
 | Step | Time |
 |---|---|
-| First open: read all commits (8 threads), order them, lay out the graph, first page of 200 rows | 0.75 s |
-| Later launches (commits come from the disk cache) | 0.27 s |
-| Refresh after a change in the repository (commits already in memory) | 0.21 s |
-| Search 86,230 commits for a word | 0.02 s |
-| Scrolling, 240 frames at 260 px per frame | median 16.5 ms, 95th percentile 22.6 ms |
+| First open: read all commits (8 threads), order them, lay out the graph, first page of 200 rows | 0.40 s |
+| Later launches (commits come from the disk cache) | 0.13 s |
+| Refresh after a change in the repository (commits already in memory) | 0.11 s |
+| Search 86,230 commits for a word | 0.01 s |
 
-The first four rows come from `graftline-server --bench <repo>`; the scroll numbers come from the
-running UI. Run the benchmark on your own repository to compare.
+The rows come from `graftline-bench <repo>` (`cargo run --release --bin graftline-bench -- <repo>`).
+Each value is the median of three runs with the repository files in the operating system's cache.
+Run it on your own repository to compare. The frame time of the window is not measured yet.
 
 How it stays fast:
 
 - Commits are read once, on several threads, and cached on disk per repository.
-- The graph layout is computed in Rust. The UI receives rows in pages and draws only the
-  visible ones on a canvas.
+- The graph layout is computed once per history. The window lays out and draws only the rows
+  in view, on the GPU.
 - Lanes that pass a row are not stored. They are rebuilt from snapshots taken every 256
   rows, so memory does not grow with the number of parallel branches.
 - No Git operation blocks the interface. Network operations run as background jobs.
@@ -134,21 +135,24 @@ How it stays fast:
 - Single lines are selected in the unified diff; the side-by-side diff works on whole hunks.
 - An interactive rebase is refused when its range contains merge commits.
 - Submodules and worktrees are shown and can be opened; they are not created or updated here.
+- Files in the changes panel are staged with the mouse (button or double click); there is no keyboard shortcut for it yet.
+- Linux needs a Vulkan driver. The window on Linux and macOS is not tested by hand yet.
 - Not included: accounts and cloud sync, GitHub / GitLab / Bitbucket integration, AI features, a terminal.
 
 ## Build from source
 
 Needs a stable Rust toolchain and a C compiler (libgit2 is built from source). Node.js is not needed.
-Linux also needs `libwebkit2gtk-4.1-dev` and `libgtk-3-dev`.
+Linux also needs `libxkbcommon-dev`, `libxkbcommon-x11-dev`, `libwayland-dev`, `libfontconfig1-dev`, `libfreetype6-dev`, `libxcb1-dev`, `libx11-xcb-dev` and `libvulkan-dev`.
+macOS needs Xcode (GPUI compiles its Metal shaders with it).
 
 ```
 cargo run                       # the desktop app
 cargo run -- path/to/repo       # open a repository on start
 cargo test                      # the tests create their own temporary repositories
-cargo run --bin graftline-server -- --port 7878 path/to/repo   # the same UI in a browser, for UI work
+cargo run --release --bin graftline-bench -- path/to/repo      # measure the load time of the graph
 ```
 
-In a debug build the UI files are read from `static/` on each request: change a file and reload the page.
+A debug build can run UI commands (keys, text, open a repository) from a file named by `GRAFTLINE_UI_DRIVER`; see `src/ui/driver.rs`.
 
 | Path | Content |
 |---|---|
@@ -156,9 +160,9 @@ In a debug build the UI files are read from `static/` on each request: change a 
 | `src/repo.rs`, `src/worktree.rs`, `src/conflicts.rs`, `src/extras.rs` | Reading and local changes with libgit2 |
 | `src/ops.rs`, `src/rewrite.rs`, `src/jobs.rs`, `src/gitcli.rs` | Operations that run the system `git` |
 | `src/safety.rs` | Snapshots before destructive actions |
-| `src/lib.rs`, `src/session.rs`, `src/watch.rs` | HTTP API, open repositories, file watch |
-| `src/bin/desktop.rs` | The native window |
-| `static/` | The UI |
+| `src/lib.rs`, `src/session.rs`, `src/watch.rs` | Application state, open repositories, file watch |
+| `src/main.rs`, `src/ui/` | The window and the interface (GPUI) |
+| `assets/ui/themes.css` | The colors of the themes |
 | `packaging/`, `.github/workflows/` | Installers, CI, releases |
 
 ## License

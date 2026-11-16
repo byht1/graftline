@@ -1,6 +1,6 @@
 //! Loads the commits reachable from all refs, orders them and lays the graph out.
 //!
-//! The result ([`History`]) is immutable and shared; the server keeps one per open repository
+//! The result ([`History`]) is immutable and shared; the session keeps one per open repository
 //! and replaces it when the refs change. Parsed commits stay in [`CommitCache`], so a rebuild
 //! reads only the commits that are new. The cache is also saved to disk, so the next launch
 //! does not read the object database again.

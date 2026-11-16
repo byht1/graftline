@@ -21,7 +21,7 @@ pub enum Side {
     Unstaged,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkStatus {
     pub staged: Vec<FileChange>,
@@ -419,7 +419,7 @@ pub fn apply_selection(repo: &Repository, op: PatchOp, path: &str, hunks: &[Hunk
 
 // ---------------------------------------------------------------- commit
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CommitRequest {
     pub message: String,
     /// Replace the last commit instead of adding one.
@@ -427,7 +427,7 @@ pub struct CommitRequest {
     pub amend: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitResult {
     pub oid: String,

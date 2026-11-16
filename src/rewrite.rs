@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::path::Path;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "op", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum HistoryOp {
     /// Applies commits on top of HEAD, oldest first.
@@ -47,7 +47,7 @@ pub struct Step {
     pub message: Option<String>,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanCommit {
     pub oid: String,

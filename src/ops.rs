@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 /// One operation, as the UI sends it.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "op", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum Op {
     BranchCreate {
@@ -112,7 +112,7 @@ pub enum Op {
     },
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LostCommit {
     pub oid: String,
@@ -387,7 +387,7 @@ pub fn in_progress(root: &Path, result: Result<String, gitcli::GitError>, before
 // ---------------------------------------------------------------- network jobs
 
 /// A network operation, as the UI sends it.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "job", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum NetJob {
     Fetch {

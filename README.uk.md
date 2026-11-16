@@ -1,11 +1,11 @@
-<p align="center"><img src="static/brand/logo-horizontal.svg" width="460" alt="Graftline — see the history, shape it safely"></p>
+<p align="center"><img src="assets/brand/logo-horizontal.svg" width="460" alt="Graftline — see the history, shape it safely"></p>
 
 # Graftline
 
 [English](README.md) · **Українська**
 
 Десктопний Git-клієнт, побудований навколо графа комітів. Один бінарний файл для Windows, macOS і Linux.
-Серверна частина написана на Rust (axum + libgit2). Інтерфейс написаний на vanilla JS і вбудований у бінарний файл. Без облікових записів і телеметрії.
+Написаний на Rust. Вікно малюється на GPU через [GPUI](https://www.gpui.rs/) — UI-фреймворк редактора Zed; дані Git дає libgit2. Без браузерного рушія, облікових записів і телеметрії.
 
 ![Graftline: граф комітів](docs/assets/screens/graph-dark.png)
 
@@ -54,7 +54,7 @@ Git-клієнт працює з роботою, яка більше ніде н
 | Windows | `graftline.exe` | Портативна версія: один файл, без встановлення |
 | macOS 11+ | `Graftline-macOS-universal.dmg` | Перетягніть Graftline до Applications. Перший запуск: клацніть правою кнопкою → Open |
 | Debian / Ubuntu | `graftline-linux-amd64.deb` | `sudo apt install ./graftline-linux-amd64.deb` |
-| Linux (інші) | `graftline-linux-x86_64.tar.gz` | Розпакуйте і запустіть `./graftline`. Потрібні WebKitGTK 4.1 і GTK 3 |
+| Linux (інші) | `graftline-linux-x86_64.tar.gz` | Розпакуйте і запустіть `./graftline`. Потрібен драйвер Vulkan; бібліотеки перелічені у `README.txt` всередині |
 
 Збірки ще не підписані. Windows SmartScreen: *More info → Run anyway*. macOS: клацніть правою кнопкою → *Open*.
 
@@ -86,7 +86,8 @@ graftline path/to/repository  # відкрити репозиторій (буд�
 | `Ctrl+Shift+F` / `L` / `P` | Fetch / pull / push |
 | `Ctrl+B`, `Ctrl+Shift+S` | Створити гілку, stash |
 | `Ctrl+Shift+C` | Показати незбережені зміни |
-| `Space`, `Ctrl+Enter` | Stage для файлу у фокусі, commit |
+| Подвійний клік, `Ctrl+Enter` | Stage або unstage файлу, commit |
+| `Tab` / `Shift+Tab` | Наступне / попереднє текстове поле |
 | `F5`, `Esc`, `F1` | Оновити, закрити панель, список клавіш |
 
 На macOS замість `Ctrl` використовуйте `⌘`.
@@ -99,7 +100,7 @@ graftline path/to/repository  # відкрити репозиторій (буд�
 | macOS | `~/Library/Application Support/graftline/` |
 | Linux | `~/.config/graftline/` |
 
-У теці лежать `recent.json` (нещодавні репозиторії), `ui-prefs.json` (тема, вкладки, розміри панелей), `window.json`, `cache/` (списки комітів, які прискорюють відкриття великих репозиторіїв), `graftline.log` і кеш `webview/`. Іншу теку задає `--data-dir` або `GRAFTLINE_DATA_DIR`.
+У теці лежать `recent.json` (нещодавні репозиторії), `ui-prefs.json` (тема, вкладки, розміри панелей), `window.json`, `cache/` (списки комітів, які прискорюють відкриття великих репозиторіїв), і `graftline.log`. Іншу теку задає `--data-dir` або `GRAFTLINE_DATA_DIR`.
 
 ## Продуктивність
 
@@ -108,19 +109,19 @@ graftline path/to/repository  # відкрити репозиторій (буд�
 
 | Крок | Час |
 |---|---|
-| Перше відкриття: читання всіх комітів (8 потоків), впорядкування, розкладка графа, перша сторінка з 200 рядків | 0,75 с |
-| Наступні запуски (коміти беруться з дискового кешу) | 0,27 с |
-| Оновлення після зміни в репозиторії (коміти вже в пам'яті) | 0,21 с |
-| Пошук слова серед 86 230 комітів | 0,02 с |
-| Прокрутка, 240 кадрів по 260 px | медіана 16,5 мс, 95-й перцентиль 22,6 мс |
+| Перше відкриття: читання всіх комітів (8 потоків), впорядкування, розкладка графа, перша сторінка з 200 рядків | 0,40 с |
+| Наступні запуски (коміти беруться з дискового кешу) | 0,13 с |
+| Оновлення після зміни в репозиторії (коміти вже в пам'яті) | 0,11 с |
+| Пошук слова серед 86 230 комітів | 0,01 с |
 
-Перші чотири рядки дає команда `graftline-server --bench <repo>`; числа прокрутки зняті в працюючому UI.
-Запустіть вимірювання на своєму репозиторії для порівняння.
+Рядки дає команда `graftline-bench <repo>` (`cargo run --release --bin graftline-bench -- <repo>`).
+Кожне значення — медіана трьох запусків, коли файли репозиторію вже в кеші операційної системи.
+Запустіть її на своєму репозиторії для порівняння. Час кадру вікна ще не виміряно.
 
 Чому це працює швидко:
 
 - Коміти читаються один раз, у кілька потоків, і кешуються на диску для кожного репозиторію.
-- Розкладку графа рахує Rust. UI отримує рядки сторінками і малює на canvas лише видимі.
+- Розкладка графа рахується один раз для історії. Вікно розміщує і малює на GPU лише видимі рядки.
 - Смуги, що проходять крізь рядок, не зберігаються. Вони відновлюються зі знімків, зроблених через кожні 256 рядків, тому пам'ять не росте з кількістю паралельних гілок.
 - Жодна операція Git не блокує інтерфейс. Мережеві операції виконуються як фонові завдання.
 
@@ -132,21 +133,24 @@ graftline path/to/repository  # відкрити репозиторій (буд�
 - Окремі рядки вибираються в unified diff; side-by-side diff працює з цілими hunk.
 - Інтерактивний rebase не запускається, якщо діапазон містить коміти злиття.
 - Submodules і worktrees показуються і відкриваються; створювати й оновлювати їх тут не можна.
+- Файли в панелі змін переводяться у stage мишею (кнопка або подвійний клік); гарячої клавіші для цього ще немає.
+- На Linux потрібен драйвер Vulkan. Вікно на Linux і macOS ще не перевірене вручну.
 - Не входить: облікові записи і синхронізація в хмарі, інтеграція з GitHub / GitLab / Bitbucket, функції ШІ, термінал.
 
 ## Збірка з вихідного коду
 
 Потрібні stable Rust і компілятор C (libgit2 збирається з вихідного коду). Node.js не потрібен.
-На Linux також потрібні `libwebkit2gtk-4.1-dev` і `libgtk-3-dev`.
+На Linux також потрібні `libxkbcommon-dev`, `libxkbcommon-x11-dev`, `libwayland-dev`, `libfontconfig1-dev`, `libfreetype6-dev`, `libxcb1-dev`, `libx11-xcb-dev` і `libvulkan-dev`.
+На macOS потрібен Xcode (GPUI компілює ним шейдери Metal).
 
 ```
 cargo run                       # десктопний застосунок
 cargo run -- path/to/repo       # відкрити репозиторій під час запуску
 cargo test                      # тести самі створюють тимчасові репозиторії
-cargo run --bin graftline-server -- --port 7878 path/to/repo   # той самий UI у браузері, для роботи над UI
+cargo run --release --bin graftline-bench -- path/to/repo      # виміряти час завантаження графа
 ```
 
-У debug-збірці файли UI читаються з `static/` на кожен запит: змініть файл і перезавантажте сторінку.
+Debug-збірка вміє виконувати команди UI (клавіші, текст, відкриття репозиторію) з файлу, заданого в `GRAFTLINE_UI_DRIVER`; див. `src/ui/driver.rs`.
 
 | Шлях | Вміст |
 |---|---|
@@ -154,9 +158,9 @@ cargo run --bin graftline-server -- --port 7878 path/to/repo   # той сами
 | `src/repo.rs`, `src/worktree.rs`, `src/conflicts.rs`, `src/extras.rs` | Читання і локальні зміни через libgit2 |
 | `src/ops.rs`, `src/rewrite.rs`, `src/jobs.rs`, `src/gitcli.rs` | Операції, які виконує системний `git` |
 | `src/safety.rs` | Знімки перед руйнівними діями |
-| `src/lib.rs`, `src/session.rs`, `src/watch.rs` | HTTP API, відкриті репозиторії, спостереження за файлами |
-| `src/bin/desktop.rs` | Нативне вікно |
-| `static/` | Інтерфейс |
+| `src/lib.rs`, `src/session.rs`, `src/watch.rs` | Стан застосунку, відкриті репозиторії, спостереження за файлами |
+| `src/main.rs`, `src/ui/` | Вікно та інтерфейс (GPUI) |
+| `assets/ui/themes.css` | Кольори тем |
 | `packaging/`, `.github/workflows/` | Інсталятори, CI, релізи |
 
 ## Ліцензія

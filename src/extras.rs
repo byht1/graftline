@@ -6,7 +6,7 @@ use git2::{Oid, Repository, Sort};
 use serde::Serialize;
 use std::path::Path;
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FileCommit {
     pub oid: String,
@@ -59,7 +59,7 @@ pub fn file_history(repo: &Repository, path: &str, limit: usize) -> Result<(Vec<
     Ok((out, more))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlameHunk {
     /// First line of the hunk, 1-based.
@@ -71,7 +71,7 @@ pub struct BlameHunk {
     pub time: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Blame {
     pub path: String,
@@ -114,7 +114,7 @@ pub fn blame(repo: &Repository, path: &str, commit: Option<&str>) -> Result<Blam
     Ok(Blame { path: path.to_string(), commit: at.id().to_string(), lines, hunks })
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Submodule {
     pub name: String,
@@ -130,7 +130,7 @@ pub struct Submodule {
     pub full_path: String,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Worktree {
     pub name: String,
@@ -141,7 +141,7 @@ pub struct Worktree {
     pub missing: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Extras {
     pub submodules: Vec<Submodule>,
