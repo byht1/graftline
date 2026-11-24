@@ -2,7 +2,7 @@
 //! reports progress to the UI as events and can be cancelled. The HTTP request that starts a
 //! job returns at once, so no git operation blocks the interface.
 
-use crate::gitcli;
+use crate::{cmdlog, gitcli};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::HashMap;
@@ -52,7 +52,7 @@ pub fn parse_percent(line: &str) -> Option<u8> {
 }
 
 /// Stops a process and the processes it started (git runs helpers for the network).
-fn kill_tree(pid: u32) {
+pub(crate) fn kill_tree(pid: u32) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -103,11 +103,13 @@ impl Jobs {
     }
 
     /// Starts `git <args>` in `dir`. `on_done(success)` runs on the job's thread when git exits.
+    /// `log_dir` is the repository whose command log gets the job (`dir` when absent).
     pub fn start(
         self: &Arc<Self>,
         repo: Option<String>,
         title: &str,
         dir: PathBuf,
+        log_dir: Option<PathBuf>,
         args: Vec<String>,
         on_done: impl FnOnce(bool) + Send + 'static,
     ) -> Result<JobInfo, gitcli::GitError> {
@@ -120,14 +122,16 @@ impl Jobs {
             use std::os::unix::process::CommandExt;
             cmd.process_group(0);
         }
-        let mut child = cmd.spawn().map_err(|e| gitcli::GitError {
-            command: command.clone(),
-            code: None,
-            output: if e.kind() == std::io::ErrorKind::NotFound {
-                "Git was not found on PATH. Install Git (https://git-scm.com/downloads) and restart the app.".into()
+        let entry = cmdlog::begin(log_dir.as_deref().unwrap_or(&dir), &command, cmdlog::Source::App);
+        let mut child = cmd.spawn().map_err(|e| {
+            let output = if e.kind() == std::io::ErrorKind::NotFound {
+                "Git was not found on PATH. Install Git (https://git-scm.com/downloads) and restart the app.".to_string()
             } else {
                 format!("Cannot start git: {e}")
-            },
+            };
+            cmdlog::append(entry, &output);
+            cmdlog::finish(entry, None, false);
+            gitcli::GitError { command: command.clone(), code: None, output }
         })?;
         let id = format!("job{}", self.next.fetch_add(1, Ordering::SeqCst));
         let info = JobInfo {
@@ -184,6 +188,7 @@ impl Jobs {
                             info.line = line.clone();
                             // A finished line stays in the log; a redrawn one is replaced.
                             if b == b'\n' {
+                                cmdlog::append(entry, &line);
                                 log.push(line);
                             }
                             if b == b'\n' || last_emit.elapsed() >= Duration::from_millis(80) {
@@ -196,12 +201,18 @@ impl Jobs {
                         }
                     }
                     if !current.is_empty() {
-                        log.push(String::from_utf8_lossy(&current).trim_end().to_string());
+                        let line = String::from_utf8_lossy(&current).trim_end().to_string();
+                        cmdlog::append(entry, &line);
+                        log.push(line);
                     }
                 }
                 let status = child.wait();
                 let stdout = out_thread.join().unwrap_or_default();
                 let ok = status.as_ref().map(|s| s.success()).unwrap_or(false);
+                if !stdout.trim().is_empty() {
+                    cmdlog::append(entry, stdout.trim_end());
+                }
+                cmdlog::finish(entry, status.as_ref().ok().and_then(|s| s.code()), ok);
                 info.state = if ok {
                     "done"
                 } else if cancelled.load(Ordering::SeqCst) {

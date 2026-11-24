@@ -255,10 +255,12 @@ pub fn run(repo: &Repository, root: &Path, op: HistoryOp) -> Result<Value> {
             let snapshot = match mode.as_str() {
                 "soft" => {
                     repo.reset(target.as_object(), git2::ResetType::Soft, None)?;
+                    crate::cmdlog::note(repo, &["reset", "--soft", &target.id().to_string()]);
                     None
                 }
                 "mixed" => {
                     repo.reset(target.as_object(), git2::ResetType::Mixed, None)?;
+                    crate::cmdlog::note(repo, &["reset", "--mixed", &target.id().to_string()]);
                     None
                 }
                 "hard" => {

@@ -36,6 +36,7 @@ actions!(
         NewBranch,
         Search,
         Refresh,
+        ToggleTerminal,
         Quit,
     ]
 );
@@ -63,6 +64,7 @@ fn bind_keys(cx: &mut App) {
         KeyBinding::new("secondary-b", NewBranch, None),
         KeyBinding::new("secondary-f", Search, None),
         KeyBinding::new("f5", Refresh, None),
+        KeyBinding::new("ctrl-`", ToggleTerminal, None),
     ]);
 }
 
@@ -185,6 +187,28 @@ impl Shell {
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(_) => break,
+            }
+        })
+        .detach();
+
+        // The command log: a repository got a new command or more output.
+        let mut commands = graftline::cmdlog::subscribe();
+        cx.spawn(async move |this, cx| loop {
+            // After a lag the keys are lost: every tab reads its log again.
+            let key = match commands.recv().await {
+                Ok(key) => Some(key),
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => None,
+                Err(_) => break,
+            };
+            let alive = this.update(cx, |this, cx| {
+                for tab in this.tabs.clone() {
+                    if key.as_ref().is_none_or(|k| *k == graftline::cmdlog::key(Path::new(&tab.read(cx).path))) {
+                        tab.update(cx, |tab, cx| tab.on_command_log(cx));
+                    }
+                }
+            });
+            if alive.is_err() {
+                break;
             }
         })
         .detach();
@@ -1068,6 +1092,11 @@ impl Render for Shell {
                 }
             }))
             .on_action(cx.listener(|this, _: &Refresh, _, cx| this.with_tab(cx, |tab, cx| tab.refresh(true, cx))))
+            .on_action(cx.listener(|this, _: &ToggleTerminal, window, cx| {
+                if let Some(tab) = this.active_tab().cloned() {
+                    tab.update(cx, |tab, cx| tab.toggle_terminal(window, cx));
+                }
+            }))
             .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| {
                 if let Some(Resize::Sidebar { x, width }) = &this.resize {
                     let dx: f32 = (e.position.x - *x).into();

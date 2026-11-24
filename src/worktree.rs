@@ -6,7 +6,7 @@
 //! (see `safety.rs`).
 
 use crate::repo::{self, FileChange, FileDiff};
-use crate::{gitcli, safety};
+use crate::{cmdlog, gitcli, safety};
 use anyhow::{anyhow, bail, Context, Result};
 use git2::{ApplyLocation, Delta, Diff, DiffOptions, Patch, Repository, Status, StatusOptions};
 use serde::{Deserialize, Serialize};
@@ -175,6 +175,7 @@ pub fn stage(repo: &Repository, paths: &[String]) -> Result<()> {
         }
     }
     index.write()?;
+    cmdlog::note_paths(repo, &["add", "--"], paths);
     Ok(())
 }
 
@@ -191,6 +192,7 @@ pub fn unstage(repo: &Repository, paths: &[String]) -> Result<()> {
             index.write()?;
         }
     }
+    cmdlog::note_paths(repo, &["restore", "--staged", "--"], paths);
     Ok(())
 }
 
@@ -201,10 +203,12 @@ pub fn discard(repo: &Repository, paths: &[String]) -> Result<Option<safety::Sna
     let snapshot = safety::snapshot(repo, paths, "Before discard")?;
     let index = repo.index()?;
     let mut tracked = Vec::new();
+    let mut untracked = Vec::new();
     for p in paths {
         if index.get_path(Path::new(p), 0).is_some() {
             tracked.push(p.as_str());
         } else {
+            untracked.push(p.clone());
             let abs = workdir.join(p);
             if std::fs::symlink_metadata(&abs).is_ok() {
                 std::fs::remove_file(&abs).with_context(|| format!("Cannot delete {p}"))?;
@@ -226,6 +230,11 @@ pub fn discard(repo: &Repository, paths: &[String]) -> Result<Option<safety::Sna
             co.path(*p);
         }
         repo.checkout_index(None, Some(&mut co))?;
+        let tracked: Vec<String> = tracked.iter().map(|p| p.to_string()).collect();
+        cmdlog::note_paths(repo, &["restore", "--"], &tracked);
+    }
+    if !untracked.is_empty() {
+        cmdlog::note_paths(repo, &["clean", "-f", "--"], &untracked);
     }
     Ok(snapshot)
 }
@@ -414,6 +423,12 @@ pub fn apply_selection(repo: &Repository, op: PatchOp, path: &str, hunks: &[Hunk
     let location = if op == PatchOp::Discard { ApplyLocation::WorkDir } else { ApplyLocation::Index };
     repo.apply(&partial, location, None)
         .with_context(|| "The selected lines do not apply. The file changed since the diff was shown: reload and try again.".to_string())?;
+    // The patch holds only the selected lines; on the command line it comes from `-p`.
+    match op {
+        PatchOp::Stage => cmdlog::note(repo, &["add", "-p", "--", path]),
+        PatchOp::Unstage => cmdlog::note(repo, &["restore", "--staged", "-p", "--", path]),
+        PatchOp::Discard => cmdlog::note(repo, &["restore", "-p", "--", path]),
+    }
     Ok(snapshot)
 }
 
@@ -473,6 +488,11 @@ pub fn commit(repo: &Repository, root: &Path, has_git: bool, req: &CommitRequest
                 repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[])?;
             }
         }
+        if req.amend {
+            cmdlog::note(repo, &["commit", "--amend", "-m", message]);
+        } else {
+            cmdlog::note(repo, &["commit", "-m", message]);
+        }
     }
     // Another handle may have a stale view of HEAD; read it again.
     let head = Repository::open(root)?.head()?.peel_to_commit()?.id();
@@ -488,5 +508,6 @@ pub fn reset_soft(repo: &Repository, to: &str, expect_head: &str) -> Result<()> 
     }
     let target = repo.find_object(repo::parse_oid(to)?, Some(git2::ObjectType::Commit))?;
     repo.reset(&target, git2::ResetType::Soft, None)?;
+    cmdlog::note(repo, &["reset", "--soft", to]);
     Ok(())
 }

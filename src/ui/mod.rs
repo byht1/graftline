@@ -16,6 +16,7 @@ pub mod overlay;
 pub mod repo_view;
 pub mod shell;
 pub mod sidebar;
+pub mod terminal;
 pub mod theme;
 pub mod tools;
 pub mod widgets;

@@ -175,6 +175,8 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("Ctrl+B", "Create a branch"),
     ("Ctrl+Shift+S", "Stash the changes"),
     ("Ctrl+Shift+C", "Show the uncommitted changes"),
+    ("Ctrl+`", "Show or hide the terminal"),
+    ("↑ ↓ in the terminal", "Earlier and later commands you typed"),
     ("Ctrl+Enter", "Commit (in the message box)"),
     ("Double click", "Stage or unstage a file"),
     ("Esc", "Close the diff, menu or dialog"),
@@ -415,6 +417,12 @@ pub fn open_palette(shell: &mut Shell, cx: &mut Context<Shell>) {
             })
         });
         add("refresh", "Refresh".into(), None, Some("F5"), on_tab(|t, cx| t.refresh(true, cx)));
+        add("terminal", "Show or hide the terminal".into(), None, Some("Ctrl+`"), {
+            let w = w.clone();
+            Rc::new(move |window, cx| {
+                let _ = w.update(cx, |tab, cx| tab.toggle_terminal(window, cx));
+            })
+        });
         add("x", "Close this repository".into(), None, Some("Ctrl+W"), {
             let weak = weak.clone();
             Rc::new(move |_, cx| {
