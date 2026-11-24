@@ -1,6 +1,6 @@
 [package]
 name = "graftline"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Graftline: a fast desktop Git client built around the commit graph"
 license = "MIT"

@@ -243,3 +243,65 @@ async fn operations_and_clone_requests_are_validated() {
     assert!(e.to_string().contains("not a folder name"), "{e}");
     assert!(app.st.jobs.list().is_empty());
 }
+
+#[tokio::test]
+async fn commands_of_the_app_and_of_the_user_are_logged() {
+    use graftline::cmdlog::{self, Source};
+    use std::time::Duration;
+    let t = TestRepo::new();
+    t.commit_file("a.txt", "one\n", "first commit");
+    let app = App::new();
+    let id = app.open(&t).await;
+    let root = app.st.session(&id).await.unwrap().root.clone();
+    assert!(cmdlog::list(&root).is_empty());
+
+    // A change by the built-in library is logged as the command that does the same.
+    std::fs::write(t.path().join("b.txt"), "new\n").unwrap();
+    app.st.mutate(&id, |r, _| worktree::stage(r, &["b.txt".to_string()])).await.unwrap();
+    // A change that runs the system git is logged with what git printed.
+    let op = ops::Op::BranchCreate { name: "topic".into(), at: None, checkout: true };
+    app.st.mutate(&id, move |r, s| ops::run(r, &s.root, op)).await.unwrap();
+    let log = cmdlog::list(&root);
+    let lines: Vec<(&str, Source)> = log.iter().map(|e| (e.command.as_str(), e.source)).collect();
+    assert_eq!(lines[0], ("git add -- b.txt", Source::BuiltIn));
+    assert!(lines[1].0.starts_with("git branch topic ") && lines[1].1 == Source::BuiltIn);
+    assert_eq!(lines[2], ("git checkout topic", Source::App));
+    assert!(log[2].ok && !log[2].running && log[2].output.contains("Switched to branch 'topic'"), "{:?}", log[2]);
+
+    // A failed command keeps the exit code and the message of git.
+    let op = ops::Op::Checkout { target: "no-such-branch".into(), kind: "branch".into() };
+    assert!(app.st.mutate(&id, move |r, s| ops::run(r, &s.root, op)).await.is_err());
+    let failed = cmdlog::list(&root).pop().unwrap();
+    assert_eq!(failed.command, "git checkout no-such-branch");
+    assert!(!failed.ok && failed.code == Some(1) && failed.output.contains("no-such-branch"), "{failed:?}");
+
+    // A line of the user runs as one git command; the leading `git` is optional.
+    let entry = app.st.run_command(&id, "git log --oneline --format=%s").await.unwrap();
+    let done = cmdlog::wait(entry, Duration::from_secs(20)).unwrap();
+    assert_eq!((done.command.as_str(), done.source, done.ok, done.code), ("git log --oneline --format=%s", Source::User, true, Some(0)));
+    assert_eq!(done.output, "first commit");
+    let entry = app.st.run_command(&id, "branch --show-current").await.unwrap();
+    assert_eq!(cmdlog::wait(entry, Duration::from_secs(20)).unwrap().output, "topic");
+
+    // A command that fails and a line that is not one command are answered in the log.
+    let entry = app.st.run_command(&id, "frobnicate").await.unwrap();
+    let done = cmdlog::wait(entry, Duration::from_secs(20)).unwrap();
+    assert!(!done.ok && done.code == Some(1) && done.output.contains("is not a git command"), "{done:?}");
+    let entry = app.st.run_command(&id, "log | head").await.unwrap();
+    let done = cmdlog::wait(entry, Duration::from_secs(5)).unwrap();
+    assert!(!done.ok && done.code.is_none() && done.output.contains("not supported"), "{done:?}");
+
+    // A command of the user that changes the repository is seen by the app.
+    let entry = app.st.run_command(&id, "commit -m \"from the terminal\"").await.unwrap();
+    assert!(cmdlog::wait(entry, Duration::from_secs(20)).unwrap().ok);
+    for _ in 0..100 {
+        if app.history(&id).await.commits.iter().any(|c| &*c.summary == "from the terminal") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(app.history(&id).await.commits.iter().any(|c| &*c.summary == "from the terminal"));
+
+    cmdlog::clear(&root);
+    assert!(cmdlog::list(&root).is_empty());
+}

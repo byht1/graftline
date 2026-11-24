@@ -78,6 +78,11 @@ pub enum Resize {
         y: Pixels,
         height: f32,
     },
+    /// The top border of the terminal panel.
+    Term {
+        y: Pixels,
+        height: f32,
+    },
 }
 
 pub struct Matches {
@@ -121,6 +126,7 @@ pub struct RepoView {
     pub resize: Option<Resize>,
     pub changes: super::changes::Changes,
     pub jobs: super::actions::JobState,
+    pub term: super::terminal::Terminal,
     pub opened_at: std::time::Instant,
     pub last_fetch: Option<std::time::Instant>,
     refs_task: Option<Task<()>>,
@@ -153,6 +159,7 @@ impl RepoView {
         .detach();
         let mut this = RepoView {
             changes: super::changes::Changes::new(cx),
+            term: super::terminal::Terminal::new(cx),
             id,
             path,
             name,
@@ -415,6 +422,11 @@ impl RepoView {
             window.focus(&self.focus);
             return true;
         }
+        // Escape in the terminal's command line returns to the graph.
+        if self.term.input.read(cx).is_focused(window) {
+            window.focus(&self.focus);
+            return true;
+        }
         let open = self.panel.is_some();
         self.panel = None;
         window.focus(&self.focus);
@@ -567,6 +579,12 @@ impl RepoView {
                         icon_btn("tb-refresh", "refresh")
                             .tip("Refresh (F5)")
                             .on_click(cx.listener(|this, _, _, cx| this.refresh(true, cx))),
+                    )
+                    .child(
+                        icon_btn("tb-terminal", "terminal")
+                            .tip("Terminal: the git commands that ran, and a line for your own (Ctrl+`)")
+                            .active(super::terminal::is_open(cx))
+                            .on_click(cx.listener(|this, _, window, cx| this.toggle_terminal(window, cx))),
                     ),
             )
     }
@@ -595,6 +613,11 @@ impl RepoView {
                 }
                 cx.notify();
             }
+            Some(Resize::Term { y, height }) => {
+                let (y, height) = (*y, *height);
+                self.term_resize(y, height, e.position.y, window);
+                cx.notify();
+            }
             Some(Resize::CommitBox { y, height }) => {
                 let dy: f32 = (e.position.y - *y).into();
                 self.changes.box_h = (height - dy).clamp(120., 600.);
@@ -609,6 +632,7 @@ impl RepoView {
             Some(Resize::Detail { .. }) => set_pref(cx, "gl.detailW", &self.detail_w.clone()),
             Some(Resize::Col { .. }) => set_pref(cx, "gl.graphCols", &self.cols.clone()),
             Some(Resize::CommitBox { .. }) => set_pref(cx, "gl.commitBoxH", &self.changes.box_h.clone()),
+            Some(Resize::Term { .. }) => self.term_save_height(cx),
             None => {}
         }
     }
@@ -617,6 +641,7 @@ impl RepoView {
 impl Render for RepoView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme(cx);
+        let terminal = self.render_terminal(&t, window, cx);
         let center =
             div().relative().flex_1().min_w_0().h_full().child(self.render_graph(&t, window, cx)).children(
                 self.panel.is_some().then(|| div().absolute().inset_0().occlude().bg(t.bg).child(self.render_panel(&t, window, cx))),
@@ -644,5 +669,6 @@ impl Render for RepoView {
                     ))
                     .child(div().flex_none().w(px(self.detail_w)).h_full().bg(t.panel).child(self.render_detail(&t, window, cx))),
             )
+            .children(terminal)
     }
 }

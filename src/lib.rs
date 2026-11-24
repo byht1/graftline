@@ -1,6 +1,7 @@
 //! Graftline: a desktop Git client. This library is the core (Git logic, sessions, jobs);
 //! the window is in `src/ui` and calls the core directly.
 
+pub mod cmdlog;
 pub mod conflicts;
 pub mod extras;
 pub mod gitcli;
@@ -201,10 +202,30 @@ impl AppState {
         let (title, args) = job.command();
         let rt = tokio::runtime::Handle::current();
         let session = s.clone();
-        Ok(self.jobs.start(Some(id.to_string()), &title, s.root.clone(), args, move |_ok| {
+        Ok(self.jobs.start(Some(id.to_string()), &title, s.root.clone(), None, args, move |_ok| {
             // Refresh in both cases: a failed pull can still have fetched new commits.
             rt.spawn(async move { session.changed().await });
         })?)
+    }
+
+    /// Runs a command line that the user typed in the terminal panel: one git command, no
+    /// shell. Returns the id of its entry in the command log; the output arrives there.
+    pub async fn run_command(&self, id: &str, line: &str) -> anyhow::Result<u64> {
+        let s = self.session(id).await?;
+        // A line that cannot run is answered in the terminal, like a shell does.
+        if self.git.is_none() {
+            return Ok(cmdlog::reject(&s.root, line.trim(), NO_GIT));
+        }
+        let args = match cmdlog::parse_line(line) {
+            Ok(args) => args,
+            Err(reason) => return Ok(cmdlog::reject(&s.root, line.trim(), &reason)),
+        };
+        let rt = tokio::runtime::Handle::current();
+        let session = s.clone();
+        Ok(cmdlog::run_user(&s.root, args, move || {
+            // The command may have changed anything: read the repository again.
+            rt.spawn(async move { session.changed().await });
+        }))
     }
 
     /// Starts `git clone` of `url` into a new folder inside `parent`. Returns the job and the
@@ -227,7 +248,8 @@ impl AppState {
             anyhow::bail!("{} already exists", target.display());
         }
         let args = vec!["clone".to_string(), "--progress".to_string(), url, name];
-        let info = self.jobs.start(None, "Clone", parent, args, |_| {})?;
+        // The clone runs in the parent folder; its log entry belongs to the new repository.
+        let info = self.jobs.start(None, "Clone", parent, Some(target.clone()), args, |_| {})?;
         Ok((info, target))
     }
 }

@@ -233,7 +233,7 @@ fn stash_save_apply_pop_drop_and_restore() {
 fn run_job(dir: &Path, title: &str, args: Vec<String>) -> JobInfo {
     let (tx, mut rx) = tokio::sync::broadcast::channel(4096);
     let jobs = Jobs::new(tx);
-    let started = jobs.start(None, title, dir.to_path_buf(), args, |_| {}).expect("the job starts");
+    let started = jobs.start(None, title, dir.to_path_buf(), None, args, |_| {}).expect("the job starts");
     assert_eq!(started.state, "running");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     loop {
@@ -418,7 +418,7 @@ fn a_running_job_can_be_cancelled() {
     // A git command that would run for a minute: an alias that starts a shell and sleeps.
     let args = vec!["-c".to_string(), "alias.wait=!sleep 60".to_string(), "wait".to_string()];
     let started = std::time::Instant::now();
-    let job = jobs.start(None, "Wait", dir.path().to_path_buf(), args, |_| {}).unwrap();
+    let job = jobs.start(None, "Wait", dir.path().to_path_buf(), None, args, |_| {}).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(600));
     assert_eq!(jobs.list().len(), 1, "the job is running");
     assert!(!jobs.cancel("no-such-job"));

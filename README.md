@@ -23,6 +23,7 @@ Written in Rust. The window is drawn on the GPU with [GPUI](https://www.gpui.rs/
 - **History:** merge, rebase, interactive rebase (reorder, squash, fixup, reword, drop), cherry-pick, revert, reset.
 - **Conflicts:** take a side for a file, a block or a line, or edit the result by hand; continue, skip or abort the operation.
 - **File history and blame.**
+- **Terminal** (``Ctrl+` ``): a log of the git commands that ran for the repository, and a line for your own git command. The log is written also while the panel is hidden; an action in the app never opens the panel. A change made by the built-in Git library is shown as the command that does the same, with the mark "built-in". The line runs one git command, not a shell: no pipes, no redirects, no editors, no password prompts. The log is kept until the app closes.
 - **Command palette** (`Ctrl+P`) and keyboard shortcuts (`F1` lists them).
 - **Themes:** Graftline Light and Graftline Dark (follows the system by default), Graphite, Paper, One Dark Pro, Dracula, Nord, GitHub Light. The button is at the bottom of the sidebar; a theme previews on hover.
 - **Changes made outside the app** (terminal, IDE) appear by themselves. The graph keeps its scroll position.
@@ -86,6 +87,7 @@ graftline path/to/repository  # open a repository (any folder inside it)
 | `Ctrl+Shift+F` / `L` / `P` | Fetch / pull / push |
 | `Ctrl+B`, `Ctrl+Shift+S` | Create a branch, stash |
 | `Ctrl+Shift+C` | Show the uncommitted changes |
+| ``Ctrl+` `` | Show or hide the terminal; `↑` `↓` in it recall your commands |
 | Double click, `Ctrl+Enter` | Stage or unstage a file, commit |
 | `Tab` / `Shift+Tab` | Next / previous text field |
 | `F5`, `Esc`, `F1` | Refresh, close a panel, list of shortcuts |

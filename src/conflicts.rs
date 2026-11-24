@@ -165,6 +165,11 @@ pub fn resolve(repo: &Repository, path: &str, choice: Choice) -> Result<Option<s
         repo.checkout_index(None, Some(&mut co)).with_context(|| format!("Cannot write {path}"))?;
         Ok(true)
     };
+    let equivalent: &[&str] = match &choice {
+        Choice::Ours => &["checkout", "--ours", "--", path],
+        Choice::Theirs => &["checkout", "--theirs", "--", path],
+        Choice::Delete | Choice::Content { .. } => &[],
+    };
     let keep = match choice {
         Choice::Ours => side(&c.our, true)?,
         Choice::Theirs => side(&c.their, false)?,
@@ -192,6 +197,11 @@ pub fn resolve(repo: &Repository, path: &str, choice: Choice) -> Result<Option<s
         index.conflict_remove(Path::new(path)).ok();
     }
     index.write()?;
+    if !equivalent.is_empty() {
+        crate::cmdlog::note(repo, equivalent);
+    }
+    // Staging the result is what marks the conflict as resolved.
+    crate::cmdlog::note(repo, &[if keep { "add" } else { "rm" }, "--", path]);
     Ok(snapshot)
 }
 

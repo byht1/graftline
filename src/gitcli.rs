@@ -91,6 +91,16 @@ pub fn run(root: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<String, G
 
 /// Like [`run`], with extra environment variables for the git process.
 pub fn run_env(root: &Path, args: &[&str], stdin: Option<&[u8]>, env: &[(&str, &str)]) -> Result<String, GitError> {
+    // Every call is a change that an action of the user started: it goes to the command log.
+    let log = crate::cmdlog::begin(root, &display(args), crate::cmdlog::Source::App);
+    let mut stderr = String::new();
+    let result = run_inner(root, args, stdin, env, &mut stderr);
+    crate::cmdlog::finish_run(log, &result, &stderr);
+    result
+}
+
+/// `stderr_ok` gets what git wrote to stderr when the command succeeded.
+fn run_inner(root: &Path, args: &[&str], stdin: Option<&[u8]>, env: &[(&str, &str)], stderr_ok: &mut String) -> Result<String, GitError> {
     let command = display(args);
     let fail = |code: Option<i32>, output: String| GitError { command: command.clone(), code, output };
     let mut cmd = self::command();
@@ -115,10 +125,11 @@ pub fn run_env(root: &Path, args: &[&str], stdin: Option<&[u8]>, env: &[(&str, &
     }
     let out = child.wait_with_output().map_err(|e| fail(None, format!("Cannot read git output: {e}")))?;
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&out.stderr);
     if out.status.success() {
+        *stderr_ok = stderr.into_owned();
         return Ok(stdout);
     }
-    let stderr = String::from_utf8_lossy(&out.stderr);
     let mut text = stderr.trim().to_string();
     if !stdout.trim().is_empty() {
         if !text.is_empty() {

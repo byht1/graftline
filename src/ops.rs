@@ -4,6 +4,7 @@
 //! works without git installed. An operation that writes files in the working tree runs
 //! the system `git`, so hooks, filters (Git LFS) and submodules behave as on the command line.
 
+use crate::cmdlog::note;
 use crate::gitcli;
 use crate::repo::parse_oid;
 use anyhow::{anyhow, bail, Context, Result};
@@ -183,6 +184,7 @@ pub fn run(repo: &Repository, root: &Path, op: Op) -> Result<Value> {
                 git2::ErrorCode::Exists => anyhow!("A branch named '{name}' already exists"),
                 _ => anyhow!(e),
             })?;
+            note(repo, &["branch", &name, &commit.id().to_string()]);
             if checkout {
                 // The branch exists now; if the checkout fails (local changes in the way), it stays.
                 gitcli::run(root, &["checkout", &name], None)?;
@@ -196,6 +198,7 @@ pub fn run(repo: &Repository, root: &Path, op: Op) -> Result<Value> {
                 git2::ErrorCode::Exists => anyhow!("A branch named '{to}' already exists"),
                 _ => anyhow!(e),
             })?;
+            note(repo, &["branch", "-m", &name, &to]);
             Ok(json!({ "name": to }))
         }
         Op::BranchDelete { name, force } => {
@@ -209,17 +212,23 @@ pub fn run(repo: &Repository, root: &Path, op: Op) -> Result<Value> {
                 return Ok(json!({ "needsForce": true, "oid": tip.to_string(), "commits": lost }));
             }
             branch.delete()?;
+            note(repo, &["branch", "-D", &name]);
             Ok(json!({ "deleted": name, "oid": tip.to_string() }))
         }
         Op::BranchRestore { name, oid } => {
             check_branch_name(&name)?;
             let commit = repo.find_commit(parse_oid(&oid)?)?;
             repo.branch(&name, &commit, false)?;
+            note(repo, &["branch", &name, &oid]);
             Ok(json!({ "name": name }))
         }
         Op::SetUpstream { branch, upstream } => {
             let mut b = repo.find_branch(&branch, BranchType::Local).with_context(|| format!("Branch '{branch}' not found"))?;
             b.set_upstream(upstream.as_deref())?;
+            match &upstream {
+                Some(u) => note(repo, &["branch", &format!("--set-upstream-to={u}"), &branch]),
+                None => note(repo, &["branch", "--unset-upstream", &branch]),
+            }
             Ok(json!({ "ok": true }))
         }
         Op::Checkout { target, kind } => {
@@ -257,7 +266,8 @@ pub fn run(repo: &Repository, root: &Path, op: Op) -> Result<Value> {
                 bail!("'{name}' is not a valid tag name");
             }
             let commit = resolve(repo, at.as_deref())?;
-            let made = match message.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
+            let message = message.as_deref().map(str::trim).filter(|m| !m.is_empty());
+            let made = match message {
                 Some(msg) => {
                     let sig =
                         repo.signature().context("Set user.name and user.email in your Git configuration to create an annotated tag")?;
@@ -269,15 +279,21 @@ pub fn run(repo: &Repository, root: &Path, op: Op) -> Result<Value> {
                 git2::ErrorCode::Exists => anyhow!("A tag named '{name}' already exists"),
                 _ => anyhow!(e),
             })?;
+            match message {
+                Some(msg) => note(repo, &["tag", "-a", &name, &commit.id().to_string(), "-m", msg]),
+                None => note(repo, &["tag", &name, &commit.id().to_string()]),
+            }
             Ok(json!({ "name": name, "oid": commit.id().to_string() }))
         }
         Op::TagDelete { name } => {
             let target = repo.find_reference(&format!("refs/tags/{name}")).with_context(|| format!("Tag '{name}' not found"))?.target();
             repo.tag_delete(&name)?;
+            note(repo, &["tag", "-d", &name]);
             Ok(json!({ "deleted": name, "oid": target.map(|o| o.to_string()) }))
         }
         Op::TagRestore { name, oid } => {
             repo.reference(&format!("refs/tags/{name}"), parse_oid(&oid)?, false, "restore tag")?;
+            note(repo, &["update-ref", &format!("refs/tags/{name}"), &oid]);
             Ok(json!({ "name": name }))
         }
         Op::Merge { branch, into } => {
@@ -331,6 +347,7 @@ pub fn run(repo: &Repository, root: &Path, op: Op) -> Result<Value> {
             // Dropping edits the reflog of refs/stash; libgit2 needs its own mutable handle.
             let mut own = Repository::open(root)?;
             own.stash_drop(index)?;
+            note(repo, &["stash", "drop", &stash_spec(index)]);
             Ok(json!({ "oid": oid.to_string(), "message": message }))
         }
         Op::StashStore { oid, message } => {
@@ -341,6 +358,7 @@ pub fn run(repo: &Repository, root: &Path, op: Op) -> Result<Value> {
             }
             // The same as `git stash store`: the new entry becomes stash@{0}.
             repo.reference("refs/stash", oid, true, &message)?;
+            note(repo, &["stash", "store", "-m", &message, &oid.to_string()]);
             Ok(json!({ "ok": true }))
         }
         Op::RemoteAdd { name, url } => {
@@ -352,20 +370,24 @@ pub fn run(repo: &Repository, root: &Path, op: Op) -> Result<Value> {
                 git2::ErrorCode::InvalidSpec => anyhow!("'{name}' is not a valid remote name"),
                 _ => anyhow!(e),
             })?;
+            note(repo, &["remote", "add", &name, url.trim()]);
             Ok(json!({ "ok": true }))
         }
         Op::RemoteRemove { name } => {
             repo.remote_delete(&name).with_context(|| format!("Cannot remove the remote '{name}'"))?;
+            note(repo, &["remote", "remove", &name]);
             Ok(json!({ "ok": true }))
         }
         Op::RemoteRename { name, to } => {
             let problems = repo.remote_rename(&name, &to).with_context(|| format!("Cannot rename the remote '{name}'"))?;
             let skipped: Vec<String> = problems.iter().flatten().flatten().map(str::to_string).collect();
+            note(repo, &["remote", "rename", &name, &to]);
             Ok(json!({ "ok": true, "refspecsNotRenamed": skipped }))
         }
         Op::RemoteSetUrl { name, url } => {
             repo.find_remote(&name).with_context(|| format!("Remote '{name}' not found"))?;
             repo.remote_set_url(&name, url.trim())?;
+            note(repo, &["remote", "set-url", &name, url.trim()]);
             Ok(json!({ "ok": true }))
         }
     }
