@@ -1,4 +1,14 @@
-Graftline 0.1.0 is the first release: a desktop Git client built around the commit graph.
+Graftline is a desktop Git client built around the commit graph. Version 0.2.0 adds a terminal panel.
+
+## New in 0.2.0
+
+- **Terminal panel** (``Ctrl+` ``, the toolbar button or the command palette). It shows each git command that ran for the repository: the command, its output, the exit code and the run time.
+- **The log is written also while the panel is hidden.** An action in the app never opens the panel.
+- **A line for your own git command.** The output shows while the command runs, and **Stop** ends it. `↑` and `↓` recall the commands you typed.
+- A change made by the built-in Git library is shown as the command that does the same, with the mark "built-in".
+- Right-click an entry to copy the command or the output, or to put the command back in the line.
+
+Limits: the line runs one git command, not a shell (no pipes, no redirects, no editors, no password prompts). A command you type runs without a confirmation. The log is kept until the app closes.
 
 ## Downloads
 
@@ -18,6 +28,7 @@ Graftline 0.1.0 is the first release: a desktop Git client built around the comm
 - **Branches and remotes:** create, check out, rename, delete; fetch, pull, push with progress; clone; tags and stashes. Drag a branch onto a branch to merge or rebase.
 - **History:** merge, rebase, interactive rebase, cherry-pick, revert, reset.
 - **Conflicts:** take a side for a file, a block or a line, or edit the result by hand.
+- **Terminal:** the log of the git commands that ran, and a line for your own git command.
 - **File history, blame, command palette, keyboard shortcuts, eight themes.**
 
 ## Your work is safe
